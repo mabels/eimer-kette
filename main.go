@@ -34,6 +34,7 @@ type Config struct {
 	outWorkers    *int
 	statsFragment *uint64
 	help          bool
+	versionFlag   bool
 	progress      *bool
 }
 
@@ -211,8 +212,12 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	err := rootCmd.Execute()
 	// fmt.Fprintf(os.Stderr, "xxx:%s\n", rootCmd.Flags().Lookup("help").Value.String())
 	app.config.help = rootCmd.Flags().Lookup("help").Value.String() == "true"
+	app.config.versionFlag = rootCmd.Flags().Lookup("version").Value.String() == "true"
 	return err
 }
+
+var GitCommit string
+var Version string
 
 func main() {
 	prefix := ""
@@ -238,6 +243,8 @@ func main() {
 	progress := true
 	app := S3StreamingLister{
 		config: Config{
+			version:       Version,
+			gitCommit:     GitCommit,
 			prefix:        &prefix,
 			delimiter:     &delimiter,
 			strategie:     &strategie,
@@ -276,6 +283,10 @@ func main() {
 	err := parseArgs(&app, os.Args)
 	if err != nil {
 		panic("cobra error, " + err.Error())
+	}
+	if app.config.help || app.config.versionFlag {
+		os.Exit(0)
+		return
 	}
 	// fmt.Fprintf(os.Stderr, "XXX:%p:%s", app.config.bucket, *app.config.bucket)
 	if app.config.bucket == nil || len(*app.config.bucket) == 0 || app.config.help {
