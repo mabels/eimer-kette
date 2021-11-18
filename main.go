@@ -87,6 +87,9 @@ func outWriter(app S3StreamingLister, tos Complete, chstatus chan RunStatus) {
 		} else if *app.config.format == "sqs" {
 			panic("not yet sqs")
 			// out, _ := json.Marshal(item)
+		} else if *app.config.format == "awsls" {
+			fmt.Fprintf(app.output.fileStream, "%s %10d %s\n",
+				item.LastModified.Format("2006-01-02 15:04:05"), item.Size, *item.Key)
 		}
 	}
 	if tos.completed {
@@ -198,7 +201,7 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.config.prefixes = flags.StringArray("prefixes", *app.config.prefixes, "prefixs")
 	app.config.prefix = flags.String("prefix", *app.config.prefix, "aws prefix")
 	app.config.delimiter = flags.String("delimiter", *app.config.delimiter, "aws delimiter")
-	app.config.format = flags.String("format", *app.config.format, "mjson | sqs")
+	app.config.format = flags.String("format", *app.config.format, "mjson | sqs | awsls")
 	app.config.bucket = flags.StringP("bucket", "b", "", "aws bucket name")
 	app.config.region = flags.String("region", *app.config.region, "aws region name")
 	app.config.maxKeys = flags.Int32("maxKeys", *app.config.maxKeys, "aws maxKey pageElement size 1000")
