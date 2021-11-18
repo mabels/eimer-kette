@@ -22,6 +22,8 @@ import (
 type Config struct {
 	gitCommit     string
 	version       string
+	strategie     *string
+	prefixes      *[]string
 	prefix        *string
 	delimiter     *string
 	format        *string
@@ -31,6 +33,8 @@ type Config struct {
 	s3Workers     *int
 	outWorkers    *int
 	statsFragment *uint64
+	help          bool
+	progress      *bool
 }
 
 type Calls struct {
@@ -62,6 +66,7 @@ type S3StreamingLister struct {
 }
 
 type RunStatus struct {
+	completed  bool
 	outObjects uint64
 }
 
@@ -83,6 +88,10 @@ func outWriter(app S3StreamingLister, tos Complete, chstatus chan RunStatus) {
 			// out, _ := json.Marshal(item)
 		}
 	}
+	if tos.completed {
+		// fmt.Fprintln(os.Stderr, "outWriter-Complete")
+		chstatus <- RunStatus{outObjects: 0, completed: true}
+	}
 }
 
 func s3Lister(input s3.ListObjectsV2Input, chi chan *s3.ListObjectsV2Input, cho chan Complete, app *S3StreamingLister) {
@@ -100,8 +109,8 @@ func s3Lister(input s3.ListObjectsV2Input, chi chan *s3.ListObjectsV2Input, cho 
 	atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2, 1)
 	resp, err := client.ListObjectsV2(context.TODO(), &input)
 	if err != nil {
-		fmt.Println("Got error retrieving list of objects:")
-		fmt.Println(err)
+		fmt.Fprintf(os.Stderr, "Got error retrieving list of objects:%s", *input.Bucket)
+		fmt.Fprintln(os.Stderr, err)
 		return
 	}
 	app.clients.channels <- client
@@ -111,32 +120,56 @@ func s3Lister(input s3.ListObjectsV2Input, chi chan *s3.ListObjectsV2Input, cho 
 	if resp.NextContinuationToken != nil {
 		atomic.AddInt64(&app.clients.calls.total.listObjectsV2Input, 1)
 		atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2Input, 1)
-		chi <- &s3.ListObjectsV2Input{
-			MaxKeys:           *app.config.maxKeys,
-			Delimiter:         input.Delimiter,
-			Prefix:            input.Prefix,
-			ContinuationToken: resp.NextContinuationToken,
-			Bucket:            input.Bucket,
+		if *app.config.strategie == "delimiter" {
+			delimiterStrategie(&app.config, input.Prefix, resp.NextContinuationToken, chi)
+		} else if *app.config.strategie == "letter" {
+			atomic.AddInt32(&app.inputConcurrent, -1)
+			atomic.AddInt32(&app.inputConcurrent, int32(len(*app.config.prefixes)))
+			singleLetterStrategie(&app.config, input.Prefix, chi)
+			return
 		}
 	} else {
 		atomic.AddInt32(&app.inputConcurrent, -1)
 	}
 
-	atomic.AddInt32(&app.inputConcurrent, int32(len(resp.CommonPrefixes)))
 	atomic.AddInt64(&app.clients.calls.total.listObjectsV2Input, int64(len(resp.CommonPrefixes)))
 	atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2Input, int64(len(resp.CommonPrefixes)))
 	for _, item := range resp.CommonPrefixes {
-		chi <- &s3.ListObjectsV2Input{
-			MaxKeys:   *app.config.maxKeys,
-			Delimiter: app.config.delimiter,
-			Prefix:    item.Prefix,
-			Bucket:    app.config.bucket,
+		if *app.config.strategie == "delimiter" {
+			atomic.AddInt32(&app.inputConcurrent, 1)
+			delimiterStrategie(&app.config, item.Prefix, nil, chi)
+		} else if *app.config.strategie == "letter" {
+			out, _ := json.Marshal(resp.CommonPrefixes)
+			fmt.Fprintln(os.Stderr, string(out))
+			panic("letter should not go to this")
 		}
 	}
 	cho <- Complete{todo: resp.Contents, completed: false}
 	if atomic.CompareAndSwapInt32(&app.inputConcurrent, 0, 0) {
-		fmt.Fprintln(os.Stderr, "Stop-Concurrent")
+		// fmt.Fprintln(os.Stderr, "Stop-Concurrent")
 		cho <- Complete{todo: nil, completed: true}
+	}
+}
+
+func delimiterStrategie(config *Config, prefix *string, next *string, chi chan *s3.ListObjectsV2Input) {
+	chi <- &s3.ListObjectsV2Input{
+		MaxKeys:           *config.maxKeys,
+		Delimiter:         config.delimiter,
+		Prefix:            prefix,
+		ContinuationToken: next,
+		Bucket:            config.bucket,
+	}
+}
+
+func singleLetterStrategie(config *Config, prefix *string, chi chan *s3.ListObjectsV2Input) {
+	for _, letter := range *config.prefixes {
+		nextPrefix := *prefix + letter
+		chi <- &s3.ListObjectsV2Input{
+			MaxKeys:   *config.maxKeys,
+			Delimiter: config.delimiter,
+			Prefix:    &nextPrefix,
+			Bucket:    config.bucket,
+		}
 	}
 }
 
@@ -144,51 +177,79 @@ func versionStr(args *Config) string {
 	return fmt.Sprintf("Version: %s:%s\n", args.version, args.gitCommit)
 }
 
-func parseArgs(app *S3StreamingLister, osArgs []string) {
+func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	rootCmd := &cobra.Command{
 		Use:     path.Base(osArgs[0]),
 		Short:   "s3-streaming-lister short help",
 		Long:    strings.TrimSpace("s3-streaming-lister long help"),
 		Version: versionStr(&app.config),
-		Args:    cobra.MinimumNArgs(0),
-		// RunE:         S3StreamingListerCmdE(&app.config),
+		// Args:    cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return nil // errors.New("Provide item to the say command")
+		},
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Fprintln(os.Stderr, "Hello World!")
+		},
 		SilenceUsage: true,
 	}
-	flags := rootCmd.PersistentFlags()
+	flags := rootCmd.Flags()
+	app.config.strategie = flags.String("strategie", *app.config.strategie, "delimiter | letter")
+	app.config.prefixes = flags.StringArray("prefixes", *app.config.prefixes, "prefixs")
 	app.config.prefix = flags.String("prefix", *app.config.prefix, "aws prefix")
 	app.config.delimiter = flags.String("delimiter", *app.config.delimiter, "aws delimiter")
 	app.config.format = flags.String("format", *app.config.format, "mjson | sqs")
-	app.config.bucket = flags.String("bucket", *app.config.bucket, "aws bucket name")
+	app.config.bucket = flags.StringP("bucket", "b", "", "aws bucket name")
 	app.config.region = flags.String("region", *app.config.region, "aws region name")
 	app.config.maxKeys = flags.Int32("maxKeys", *app.config.maxKeys, "aws maxKey pageElement size 1000")
 	app.config.s3Workers = flags.Int("s3Worker", *app.config.s3Workers, "number of query worker")
 	app.config.outWorkers = flags.Int("outWorkers", *app.config.outWorkers, "number of output worker")
 	app.config.statsFragment = flags.Uint64("statsFragment", *app.config.statsFragment, "number statistics output")
+	app.config.progress = flags.Bool("progress", *app.config.progress, "progress output")
+	rootCmd.MarkFlagRequired("bucket")
+	// fmt.Fprintln(os.Stderr, string(out))
 	rootCmd.SetArgs(osArgs[1:])
-	rootCmd.Execute()
+	err := rootCmd.Execute()
+	// fmt.Fprintf(os.Stderr, "xxx:%s\n", rootCmd.Flags().Lookup("help").Value.String())
+	app.config.help = rootCmd.Flags().Lookup("help").Value.String() == "true"
+	return err
 }
 
 func main() {
 	prefix := ""
 	delimiter := "/"
 	mjson := "mjson"
-	bucket := "unknown bucket"
+	// bucket := nil
 	region := "eu-central-1"
 	s3Workers := 16
 	outWorkers := 1
 	maxKeys := int32(1000)
 	statsFragment := uint64(10000)
+	prefixes := []string{
+		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+		"N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+		"n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+		"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+		"`", "!", "@", "#", "$", "%", "^", "&", "*", "(",
+		")", "-", "_", "=", "+", "{", "}", "[", "]", "\\",
+		"|", ":", ";", "\"", "'", "?", "/", ".", ">", ",", "<",
+	}
+	strategie := "delimiter"
+	progress := true
 	app := S3StreamingLister{
 		config: Config{
 			prefix:        &prefix,
 			delimiter:     &delimiter,
+			strategie:     &strategie,
+			prefixes:      &prefixes,
 			format:        &mjson,
-			bucket:        &bucket,
+			bucket:        nil,
 			region:        &region,
 			s3Workers:     &s3Workers,
 			outWorkers:    &outWorkers,
 			maxKeys:       &maxKeys,
 			statsFragment: &statsFragment,
+			progress:      &progress,
 		},
 		inputConcurrent: 0,
 		clients: Channels{
@@ -212,7 +273,15 @@ func main() {
 		},
 	}
 
-	parseArgs(&app, os.Args)
+	err := parseArgs(&app, os.Args)
+	if err != nil {
+		panic("cobra error, " + err.Error())
+	}
+	// fmt.Fprintf(os.Stderr, "XXX:%p:%s", app.config.bucket, *app.config.bucket)
+	if app.config.bucket == nil || len(*app.config.bucket) == 0 || app.config.help {
+		os.Exit(1)
+		return
+	}
 	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(*app.config.region))
 	if err != nil {
 		panic("aws configuration error, " + err.Error())
@@ -220,26 +289,6 @@ func main() {
 	app.aws = awsCfg
 
 	chstatus := make(chan RunStatus, 100)
-	go func() {
-		total := uint64(0)
-		lastTotal := uint64(0)
-		for item := range chstatus {
-			total += item.outObjects
-			if lastTotal/(*app.config.statsFragment) != total/(*app.config.statsFragment) {
-				fmt.Fprintf(os.Stderr, "Done=%d inputConcurrent=%d listObjectsV2=%d/%d listObjectsV2Input=%d/%d NewFromConfig=%d/%d\n",
-					total,
-					app.inputConcurrent,
-					app.clients.calls.total.listObjectsV2,
-					app.clients.calls.concurrent.listObjectsV2,
-					app.clients.calls.total.listObjectsV2Input,
-					app.clients.calls.concurrent.listObjectsV2Input,
-					app.clients.calls.total.newFromConfig,
-					app.clients.calls.concurrent.newFromConfig,
-				)
-				lastTotal = total
-			}
-		}
-	}()
 
 	cho := make(chan Complete, *app.config.maxKeys)
 	chi := make(chan *s3.ListObjectsV2Input, (*app.config.maxKeys)*int32(*app.config.s3Workers))
@@ -252,22 +301,48 @@ func main() {
 			})
 		}
 	}()
-	atomic.AddInt32(&app.inputConcurrent, 1)
-	chi <- &s3.ListObjectsV2Input{
-		MaxKeys:   *app.config.maxKeys,
-		Delimiter: app.config.delimiter,
-		Prefix:    app.config.prefix,
-		Bucket:    app.config.bucket,
-	}
+
 	poolo := pond.New(*app.config.outWorkers, 0, pond.MinWorkers(*app.config.outWorkers))
-	poolo.SubmitAndWait(func() {
+	poolo.Submit(func() {
 		for items := range cho {
+			outWriter(app, items, chstatus)
 			if items.completed {
-				fmt.Fprintln(os.Stderr, "Exit-Items", items)
+				// fmt.Fprintln(os.Stderr, "Exit-Items", items)
 				return
 			}
-			outWriter(app, items, chstatus)
 		}
 	})
-	fmt.Fprintln(os.Stderr, "Exit")
+
+	if *app.config.strategie == "delimiter" {
+		atomic.AddInt32(&app.inputConcurrent, 1)
+		delimiterStrategie(&app.config, app.config.prefix, nil, chi)
+	} else if *app.config.strategie == "letter" {
+		atomic.AddInt32(&app.inputConcurrent, int32(len(*app.config.prefixes)))
+		singleLetterStrategie(&app.config, app.config.prefix, chi)
+	}
+
+	total := uint64(0)
+	lastTotal := uint64(0)
+	for item := range chstatus {
+		total += item.outObjects
+		if item.completed || lastTotal/(*app.config.statsFragment) != total/(*app.config.statsFragment) {
+			if *app.config.progress {
+				fmt.Fprintf(os.Stderr, "Done=%d inputConcurrent=%d listObjectsV2=%d/%d listObjectsV2Input=%d/%d NewFromConfig=%d/%d\n",
+					total,
+					app.inputConcurrent,
+					app.clients.calls.total.listObjectsV2,
+					app.clients.calls.concurrent.listObjectsV2,
+					app.clients.calls.total.listObjectsV2Input,
+					app.clients.calls.concurrent.listObjectsV2Input,
+					app.clients.calls.total.newFromConfig,
+					app.clients.calls.concurrent.newFromConfig,
+				)
+			}
+			lastTotal = total
+			if item.completed {
+				break
+			}
+		}
+	}
+	// fmt.Fprintln(os.Stderr, "Exit")
 }
