@@ -107,26 +107,42 @@ func createSqsMessage(app S3StreamingLister, todo []types.Object)(jsonBytes []by
 	return jsonBytes
 }
 
+func chunkSlice(items []types.Object, chunkSize int32) (chunks [][]types.Object) {
+	for chunkSize < int32(len(items)) {
+		chunks = append(chunks, items[0:chunkSize:chunkSize])
+		items = items[chunkSize:]
+	}
+	return append(chunks, items)
+}
+
+func sendSqsMessage(app S3StreamingLister, jsonStr string, chstatus chan RunStatus) {
+	_, err := app.output.sqs.SendMessage(context.TODO(), &sqs.SendMessageInput{
+		DelaySeconds: *app.config.outputSqs.delay,
+		QueueUrl:     app.config.outputSqs.url,
+		MessageBody:  &jsonStr,
+	})
+	if err != nil {
+		chstatus <- RunStatus{err: &err}
+	}
+}
+
 func outWriter(app S3StreamingLister, tos Complete, chstatus chan RunStatus) {
 	chstatus <- RunStatus{outObjects: uint64(len(tos.todo))}
 	if *app.config.format == "sqs" {
 		jsonBytes := createSqsMessage(app, tos.todo)
 		jsonStr := string(jsonBytes)
 
-		if len(jsonBytes) > int(*app.config.outputSqs.maxMessageSize) {
-			chunks := int(math.Ceil(float64(len(jsonBytes) / int(*app.config.outputSqs.maxMessageSize)))) + 1
-			for i := 0; i < chunks; i++ {
-				// todo
+		length := int32(len(jsonBytes))
+		if length > *app.config.outputSqs.maxMessageSize {
+			chunkSize := int32(math.Ceil(float64(length / *app.config.outputSqs.maxMessageSize))) + 1
+			chunks := chunkSlice(tos.todo, chunkSize)
+			for i := int32(0); i < chunkSize; i++ {
+				jsonBytes = createSqsMessage(app, chunks[i])
+				jsonStr = string(jsonBytes)
+				sendSqsMessage(app, jsonStr, chstatus)
 			}
-		}
-
-		_, err := app.output.sqs.SendMessage(context.TODO(), &sqs.SendMessageInput{
-			DelaySeconds: *app.config.outputSqs.delay,
-			QueueUrl:     app.config.outputSqs.url,
-			MessageBody:  &jsonStr,
-		})
-		if err != nil {
-			chstatus <- RunStatus{err: &err}
+		} else {
+			sendSqsMessage(app, jsonStr, chstatus)
 		}
 	} else {
 		for _, item := range tos.todo {
