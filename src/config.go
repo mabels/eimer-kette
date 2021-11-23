@@ -37,8 +37,8 @@ type Config struct {
 }
 
 type SqsParams struct {
-	url   *string
-	delay *int32
+	url            *string
+	delay          *int32
 	maxMessageSize *int32
 }
 
@@ -71,8 +71,11 @@ type S3StreamingLister struct {
 	aws             aws.Config
 }
 
+var GitCommit string
+var Version string
+
 func defaultS3StreamingLister() *S3StreamingLister {
-    prefix := ""
+	prefix := ""
 	delimiter := "/"
 	mjson := "mjson"
 	outputSqsUrl := ""
@@ -106,8 +109,8 @@ func defaultS3StreamingLister() *S3StreamingLister {
 			prefixes:  &prefixes,
 			format:    &mjson,
 			outputSqs: SqsParams{
-				delay: &outputSqsDelay,
-				url:   &outputSqsUrl,
+				delay:          &outputSqsDelay,
+				url:            &outputSqsUrl,
 				maxMessageSize: &outputSqsMaxMessageSize,
 			},
 			bucket:        nil,
@@ -141,7 +144,6 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	}
 	return &app
 }
-
 
 func versionStr(args *Config) string {
 	return fmt.Sprintf("Version: %s:%s\n", args.version, args.gitCommit)
@@ -187,7 +189,6 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.config.versionFlag = rootCmd.Flags().Lookup("version").Value.String() == "true"
 	return err
 }
-
 
 func initS3StreamingLister(app *S3StreamingLister) {
 

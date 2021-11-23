@@ -19,9 +19,6 @@ import (
 	// "github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
-var GitCommit string
-var Version string
-
 func main() {
 	app := defaultS3StreamingLister()
 	initS3StreamingLister(app)
@@ -38,6 +35,8 @@ func main() {
 		atomic.AddInt32(&app.inputConcurrent, int32(len(*app.config.prefixes)))
 		singleLetterStrategie(&app.config, app.config.prefix, chi)
 	}
+
+	statusWorker(app, chstatus)
 
 	// fmt.Fprintln(os.Stderr, "Exit")
 }
