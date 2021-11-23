@@ -24,7 +24,6 @@ func main() {
 	initS3StreamingLister(app)
 
 	chstatus := make(chan RunStatus, 100)
-
 	cho := outWorker(app, chstatus)
 	chi := s3ListerWorker(app, cho)
 
