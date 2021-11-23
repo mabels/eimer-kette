@@ -1,4 +1,4 @@
-module s3-streaming-lister
+module s3-streaming-lister.adviser.com
 
 go 1.17
 
