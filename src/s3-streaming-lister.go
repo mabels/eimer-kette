@@ -1,22 +1,7 @@
 package main
 
 import (
-	// "go/types"
 	"sync/atomic"
-	// "context"
-	// "encoding/json"
-	// "fmt"
-	// "io"
-	// "math"
-	// "os"
-	// "sync/atomic"
-	// "github.com/alitto/pond"
-	// "github.com/aws/aws-lambda-go/events"
-	// "github.com/aws/aws-sdk-go-v2/aws"
-	// // "github.com/aws/aws-sdk-go-v2/config"
-	// "github.com/aws/aws-sdk-go-v2/service/s3"
-	// "github.com/aws/aws-sdk-go-v2/service/s3/types"
-	// "github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
 func main() {
