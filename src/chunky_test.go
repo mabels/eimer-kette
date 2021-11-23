@@ -72,6 +72,7 @@ func TestLowFill(t *testing.T) {
 	if len(chunkedRef) != 0 {
 		t.Error("chunkedRef")
 	}
+	chunky.done()
 }
 
 func TestChunkedFill(t *testing.T) {

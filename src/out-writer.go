@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
-
 	"github.com/alitto/pond"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -15,25 +13,6 @@ import (
 type Complete struct {
 	completed bool
 	todo      []types.Object
-}
-
-func createSqsMessage(app *S3StreamingLister, todo *[]types.Object) *[]byte {
-	records := make([]events.S3EventRecord, len(*todo))
-	for i, item := range *todo { //262144 bytes.
-		records[i] = events.S3EventRecord{
-			S3: events.S3Entity{
-				Bucket: events.S3Bucket{
-					Name: *app.config.bucket,
-				},
-				Object: events.S3Object{
-					Key: *item.Key,
-				},
-			},
-		}
-	}
-	event := events.S3Event{Records: records}
-	jsonBytes, _ := json.Marshal(event)
-	return &jsonBytes
 }
 
 func sendSqsMessage(app *S3StreamingLister, jsonBytes *[]byte, chstatus chan RunStatus) {
@@ -48,37 +27,53 @@ func sendSqsMessage(app *S3StreamingLister, jsonBytes *[]byte, chstatus chan Run
 	}
 }
 
+func outWriterSqs(app *S3StreamingLister, tos Complete, chstatus chan RunStatus) {
+	chunky, _ := makeChunky(&events.S3Event{}, int(*app.config.outputSqs.maxMessageSize), func(c Chunky) {
+		cframe := c.frame.(*events.S3Event)
+		cframe.Records = make([]events.S3EventRecord, len(c.records))
+		for i, item := range c.records {
+			cframe.Records[i] = events.S3EventRecord{
+				S3: events.S3Entity{
+					Bucket: events.S3Bucket{
+						Name: *app.config.bucket,
+					},
+					Object: events.S3Object{
+						Key: *item.(types.Object).Key,
+					},
+				},
+			}
+		}
+		jsonBytes, _ := json.Marshal(cframe)
+		sendSqsMessage(app, &jsonBytes, chstatus)
+	})
+	for _, item := range tos.todo {
+		chunky.append(item)
+	}
+	chunky.done()
+}
+
+func outWriterMjson(app *S3StreamingLister, tos Complete) {
+	for _, item := range tos.todo {
+		out, _ := json.Marshal(item)
+		fmt.Fprintln(app.output.fileStream, string(out))
+	}
+}
+
+func outWriterAwsls(app *S3StreamingLister, tos Complete) {
+	for _, item := range tos.todo {
+		fmt.Fprintf(app.output.fileStream, "%s %10d %s\n",
+			item.LastModified.Format("2006-01-02 15:04:05"), item.Size, *item.Key)
+	}
+}
+
 func outWriter(app *S3StreamingLister, tos Complete, chstatus chan RunStatus) {
 	chstatus <- RunStatus{outObjects: uint64(len(tos.todo))}
 	if *app.config.format == "sqs" {
-		// block mode
-		jsonBytes := createSqsMessage(app, &tos.todo)
-
-		length := int32(len(*jsonBytes))
-		if length > *app.config.outputSqs.maxMessageSize {
-			chunkSize := int32(math.Ceil(float64(length / *app.config.outputSqs.maxMessageSize))) + 1
-			for chunkSize < int32(len(tos.todo)) {
-				newTodo := tos.todo[0:chunkSize:chunkSize]
-				jsonBytes = createSqsMessage(app, &newTodo)
-				sendSqsMessage(app, jsonBytes, chstatus)
-				tos.todo = tos.todo[chunkSize:]
-			}
-		} else {
-			sendSqsMessage(app, jsonBytes, chstatus)
-		}
-	} else {
-		// line mode
-		for _, item := range tos.todo {
-			if *app.config.format == "mjson" {
-				// Add BucketName
-				// app.config.bucket
-				out, _ := json.Marshal(item)
-				fmt.Fprintln(app.output.fileStream, string(out))
-			} else if *app.config.format == "awsls" {
-				fmt.Fprintf(app.output.fileStream, "%s %10d %s\n",
-					item.LastModified.Format("2006-01-02 15:04:05"), item.Size, *item.Key)
-			}
-		}
+		outWriterSqs(app, tos, chstatus)
+	} else if *app.config.format == "mjson" {
+		outWriterMjson(app, tos)
+	} else if *app.config.format == "awsls" {
+		outWriterAwsls(app, tos)
 	}
 
 	if tos.completed {
