@@ -80,7 +80,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	mjson := "mjson"
 	outputSqsUrl := ""
 	outputSqsDelay := int32(10)
-	outputSqsMaxMessageSize := int32(240000)
+	outputSqsMaxMessageSize := int32(137715)
 	// bucket := nil
 	region := "eu-central-1"
 	s3Workers := 16
