@@ -87,15 +87,14 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	outWorkers := 1
 	maxKeys := 1000
 	statsFragment := uint64(10000)
+	// allowed characters: https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html
 	prefixes := []string{
-		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
-		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
-		"N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
-		"n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
 		"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-		"`", "!", "@", "#", "$", "%", "^", "&", "*", "(",
-		")", "-", "_", "=", "+", "{", "}", "[", "]", "\\",
-		"|", ":", ";", "\"", "'", "?", "/", ".", ">", ",", "<",
+		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+		"N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+		"n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+		"/", "!", "-", "_", ".", "*", "'", "(", ")",
 	}
 	strategie := "delimiter"
 	progress := true
@@ -166,7 +165,7 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	}
 	flags := rootCmd.Flags()
 	app.config.strategie = flags.String("strategie", *app.config.strategie, "delimiter | letter")
-	app.config.prefixes = flags.StringArray("prefixes", *app.config.prefixes, "prefixs")
+	app.config.prefixes = flags.StringArray("prefixes", *app.config.prefixes, "prefixs (safe characters are default, see https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html )")
 	app.config.prefix = flags.String("prefix", *app.config.prefix, "aws prefix")
 	app.config.delimiter = flags.String("delimiter", *app.config.delimiter, "aws delimiter")
 	app.config.format = flags.String("format", *app.config.format, "mjson | sqs | awsls")
