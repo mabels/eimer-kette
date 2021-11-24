@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
 type Config struct {
@@ -26,7 +25,7 @@ type Config struct {
 	format        *string
 	bucket        *string
 	region        *string
-	maxKeys       *int32
+	maxKeys       *int
 	s3Workers     *int
 	outWorkers    *int
 	statsFragment *uint64
@@ -46,6 +45,8 @@ type Calls struct {
 	newFromConfig      int64
 	listObjectsV2      int64
 	listObjectsV2Input int64
+	newSqs             int64
+	sqsSendMessage     int64
 }
 
 type TotalCurrent struct {
@@ -60,7 +61,6 @@ type Channels struct {
 
 type Output struct {
 	fileStream io.Writer
-	sqs        *sqs.Client
 }
 
 type S3StreamingLister struct {
@@ -85,7 +85,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	region := "eu-central-1"
 	s3Workers := 16
 	outWorkers := 1
-	maxKeys := int32(1000)
+	maxKeys := 1000
 	statsFragment := uint64(10000)
 	prefixes := []string{
 		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
@@ -175,7 +175,7 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.config.outputSqs.maxMessageSize = flags.Int32("outputSqsMaxMessageSize", *app.config.outputSqs.maxMessageSize, "maxMessageSize")
 	app.config.bucket = flags.StringP("bucket", "b", "", "aws bucket name")
 	app.config.region = flags.String("region", *app.config.region, "aws region name")
-	app.config.maxKeys = flags.Int32("maxKeys", *app.config.maxKeys, "aws maxKey pageElement size 1000")
+	app.config.maxKeys = flags.Int("maxKeys", *app.config.maxKeys, "aws maxKey pageElement size 1000")
 	app.config.s3Workers = flags.Int("s3Worker", *app.config.s3Workers, "number of query worker")
 	app.config.outWorkers = flags.Int("outWorkers", *app.config.outWorkers, "number of output worker")
 	app.config.statsFragment = flags.Uint64("statsFragment", *app.config.statsFragment, "number statistics output")
@@ -191,7 +191,6 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 }
 
 func initS3StreamingLister(app *S3StreamingLister) {
-
 	err := parseArgs(app, os.Args)
 	if err != nil {
 		panic("cobra error, " + err.Error())
@@ -210,5 +209,4 @@ func initS3StreamingLister(app *S3StreamingLister) {
 		panic("aws configuration error, " + err.Error())
 	}
 	app.aws = awsCfg
-
 }

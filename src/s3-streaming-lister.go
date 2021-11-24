@@ -8,9 +8,9 @@ func main() {
 	app := defaultS3StreamingLister()
 	initS3StreamingLister(app)
 
-	chstatus := make(chan RunStatus, 100)
+	chstatus := makeChannelQueue(100)
 	cho := outWorker(app, chstatus)
-	chi := s3ListerWorker(app, cho)
+	chi := s3ListerWorker(app, cho, chstatus)
 
 	if *app.config.strategie == "delimiter" {
 		atomic.AddInt32(&app.inputConcurrent, 1)
@@ -19,8 +19,5 @@ func main() {
 		atomic.AddInt32(&app.inputConcurrent, int32(len(*app.config.prefixes)))
 		singleLetterStrategie(&app.config, app.config.prefix, chi)
 	}
-
 	statusWorker(app, chstatus)
-
-	// fmt.Fprintln(os.Stderr, "Exit")
 }

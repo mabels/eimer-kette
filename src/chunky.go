@@ -10,8 +10,8 @@ type Chunky struct {
 	frame       interface{}
 	frameSize   int
 	currentSize int
-	records   []interface{}
-	chunkedFn func(c Chunky)
+	records     []interface{}
+	chunkedFn   func(c Chunky)
 }
 
 func (chunky *Chunky) done() error {
@@ -37,7 +37,7 @@ func (chunky *Chunky) append(row interface{}) error {
 		return errors.New("row is bigger than maxSize")
 	}
 	// fmt.Fprintln(os.Stderr, "xxxx", chunky.currentSize, len(jsonBytes), chunky.maxSize)
-	if chunky.currentSize + recordLen >= chunky.maxSize {
+	if chunky.currentSize+recordLen >= chunky.maxSize {
 		chunky.done()
 	}
 	chunky.currentSize += recordLen
@@ -45,14 +45,17 @@ func (chunky *Chunky) append(row interface{}) error {
 	return nil
 }
 
-func makeChunky(frame interface{}, maxSize int, chunkedFn func(c Chunky)) (Chunky, error) {
+func makeChunky(frame interface{}, maxSize int, chunkedFn ...func(c Chunky)) (Chunky, error) {
 	jsonBytes, err := json.Marshal(frame)
+	if len(chunkedFn) == 0 {
+		chunkedFn = []func(c Chunky){func(_ Chunky) {}}
+	}
 	chunky := Chunky{
 		maxSize:     maxSize,
 		frame:       frame,
 		frameSize:   len(jsonBytes),
 		currentSize: len(jsonBytes),
-		chunkedFn:   chunkedFn,
+		chunkedFn:   chunkedFn[0],
 	}
 	if err != nil {
 		return chunky, err

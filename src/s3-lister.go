@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-func s3Lister(input s3.ListObjectsV2Input, chi chan *s3.ListObjectsV2Input, cho chan Complete, app *S3StreamingLister) {
+func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, cho Queue, chstatus Queue) {
 	var client *s3.Client
 	atomic.AddInt64(&app.clients.calls.concurrent.newFromConfig, 1)
 	select {
@@ -26,6 +26,7 @@ func s3Lister(input s3.ListObjectsV2Input, chi chan *s3.ListObjectsV2Input, cho 
 	atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2, 1)
 	resp, err := client.ListObjectsV2(context.TODO(), &input)
 	if err != nil {
+		chstatus.push(RunStatus{err: &err})
 		fmt.Fprintf(os.Stderr, "Got error retrieving list of objects:%s", *input.Bucket)
 		fmt.Fprintln(os.Stderr, err)
 		return
@@ -61,45 +62,45 @@ func s3Lister(input s3.ListObjectsV2Input, chi chan *s3.ListObjectsV2Input, cho 
 			panic("letter should not go to this")
 		}
 	}
-	cho <- Complete{todo: resp.Contents, completed: false}
+	cho.push(Complete{todo: resp.Contents, completed: false})
 	if atomic.CompareAndSwapInt32(&app.inputConcurrent, 0, 0) {
 		// fmt.Fprintln(os.Stderr, "Stop-Concurrent")
-		cho <- Complete{todo: nil, completed: true}
+		cho.push(Complete{todo: nil, completed: true})
 	}
 }
 
-func delimiterStrategie(config *Config, prefix *string, next *string, chi chan *s3.ListObjectsV2Input) {
-	chi <- &s3.ListObjectsV2Input{
-		MaxKeys:           *config.maxKeys,
+func delimiterStrategie(config *Config, prefix *string, next *string, chi Queue) {
+	chi.push(&s3.ListObjectsV2Input{
+		MaxKeys:           int32(*config.maxKeys),
 		Delimiter:         config.delimiter,
 		Prefix:            prefix,
 		ContinuationToken: next,
 		Bucket:            config.bucket,
-	}
+	})
 }
 
-func singleLetterStrategie(config *Config, prefix *string, chi chan *s3.ListObjectsV2Input) {
+func singleLetterStrategie(config *Config, prefix *string, chi Queue) {
 	for _, letter := range *config.prefixes {
 		nextPrefix := *prefix + letter
-		chi <- &s3.ListObjectsV2Input{
-			MaxKeys:   *config.maxKeys,
+		chi.push(&s3.ListObjectsV2Input{
+			MaxKeys:   int32(*config.maxKeys),
 			Delimiter: config.delimiter,
 			Prefix:    &nextPrefix,
 			Bucket:    config.bucket,
-		}
+		})
 	}
 }
 
-func s3ListerWorker(app *S3StreamingLister, cho chan Complete) chan *s3.ListObjectsV2Input {
-	chi := make(chan *s3.ListObjectsV2Input, (*app.config.maxKeys)*int32(*app.config.s3Workers))
+func s3ListerWorker(app *S3StreamingLister, cho Queue, chstatus Queue) Queue {
+	chi := makeChannelQueue((*app.config.maxKeys) * *app.config.s3Workers)
 	pooli := pond.New(*app.config.s3Workers, *app.config.s3Workers)
 	go func() {
-		for item := range chi {
-			citem := *item
+		chi.wait(func(item interface{}) {
+			citem := *item.(*s3.ListObjectsV2Input)
 			pooli.Submit(func() {
-				s3Lister(citem, chi, cho, app)
+				s3Lister(app, citem, chi, cho, chstatus)
 			})
-		}
+		})
 	}()
 	return chi
 }

@@ -11,13 +11,14 @@ type RunStatus struct {
 	err        *error
 }
 
-func statusWorker(app *S3StreamingLister, chstatus chan RunStatus) {
+func statusWorker(app *S3StreamingLister, chstatus Queue) {
 	total := uint64(0)
 	lastTotal := uint64(0)
-	for item := range chstatus {
+	chstatus.wait(func(inItem interface{}) {
+		item := inItem.(RunStatus)
 		if item.err != nil {
 			fmt.Fprintln(os.Stderr, *item.err)
-			continue
+			return
 		}
 		total += item.outObjects
 		if item.completed || lastTotal/(*app.config.statsFragment) != total/(*app.config.statsFragment) {
@@ -35,8 +36,9 @@ func statusWorker(app *S3StreamingLister, chstatus chan RunStatus) {
 			}
 			lastTotal = total
 			if item.completed {
-				break
+				chstatus.abort()
+				return
 			}
 		}
-	}
+	})
 }
