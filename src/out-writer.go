@@ -40,7 +40,7 @@ func outWorker(app *S3StreamingLister, chstatus Queue) Queue {
 					ow.done()
 					// fmt.Fprintln(os.Stderr, "outWriter-Complete")
 					chstatus.push(RunStatus{outObjects: 0, completed: true})
-					cho.abort()
+					cho.stop()
 				}
 			})
 		})
