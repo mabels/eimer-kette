@@ -36,7 +36,6 @@ func statusWorker(app *S3StreamingLister, chstatus Queue) {
 			}
 			lastTotal = total
 			if item.completed {
-				fmt.Fprintln(os.Stderr, "ChStatus-Stop")
 				chstatus.stop()
 				return
 			}

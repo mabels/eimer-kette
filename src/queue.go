@@ -26,7 +26,8 @@ func (cq *ChannelQueue) notifyWaitDone(fn func(q Queue)) {
 }
 
 func (cq *ChannelQueue) wait(fn func(a interface{})) {
-	waitQ := make(chan interface{})
+	// one item per waiter + on stop item for in wait calls
+	waitQ := make(chan interface{}, 1+1)
 	cq.createWaitQ <- waitQ
 	for i := range waitQ {
 		if i == nil {
@@ -65,9 +66,12 @@ func makeChannelQueue(qbufferSize ...int) Queue {
 	ret := &ChannelQueue{
 		createWaitQ:   make(chan chan interface{}, qbufferSize[0]),
 		completeWaitQ: make(chan chan interface{}, qbufferSize[0]),
-		waitQ:         make(chan chan interface{}, qbufferSize[0]),
+		// +1 to work with in wait - stops
+		waitQ: make(chan chan interface{}, qbufferSize[0]+1),
 	}
+	startCompleted := make(chan bool)
 	go func() {
+		startCompleted <- true
 		for ch := range ret.createWaitQ {
 			for _, n := range ret.notificationsWaitAdded {
 				n(ret)
@@ -76,6 +80,7 @@ func makeChannelQueue(qbufferSize ...int) Queue {
 		}
 	}()
 	go func() {
+		startCompleted <- true
 		for ignore := range ret.completeWaitQ {
 			_ = ignore
 			for _, n := range ret.notificationsWaitDone {
@@ -83,5 +88,7 @@ func makeChannelQueue(qbufferSize ...int) Queue {
 			}
 		}
 	}()
+	<-startCompleted
+	<-startCompleted
 	return ret
 }

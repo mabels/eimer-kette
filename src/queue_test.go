@@ -145,3 +145,19 @@ func TestChannelQueueMultipleFivePush(t *testing.T) {
 		t.Error("expected should be empty", waitExpected, pushes)
 	}
 }
+
+func TestChannelQueueRecursiveStop(t *testing.T) {
+	q := makeChannelQueue()
+	gotStop := make(chan bool)
+	go func() {
+		q.wait(func(a interface{}) {
+			fmt.Println("got a", a)
+			q.stop()
+			fmt.Println("post stop")
+		})
+		gotStop <- true
+	}()
+	q.push(5)
+	<-gotStop
+
+}
