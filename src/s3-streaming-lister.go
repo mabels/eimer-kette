@@ -8,7 +8,7 @@ func main() {
 	app := defaultS3StreamingLister()
 	initS3StreamingLister(app)
 
-	chstatus := makeChannelQueue(100)
+	chstatus := makeChannelQueue(*app.config.outWorkers * *app.config.s3Workers * 10)
 	cho := outWorker(app, chstatus)
 	chi := s3ListerWorker(app, cho, chstatus)
 

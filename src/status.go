@@ -23,7 +23,7 @@ func statusWorker(app *S3StreamingLister, chstatus Queue) {
 		total += item.outObjects
 		if item.completed || lastTotal/(*app.config.statsFragment) != total/(*app.config.statsFragment) {
 			if *app.config.progress {
-				fmt.Fprintf(os.Stderr, "Done=%d inputConcurrent=%d listObjectsV2=%d/%d listObjectsV2Input=%d/%d NewFromConfig=%d/%d\n",
+				fmt.Fprintf(os.Stderr, "Done=%d inputConcurrent=%d listObjectsV2=%d/%d listObjectsV2Input=%d/%d NewFromConfig=%d/%d SqsSendMessage=%d/%d\n",
 					total,
 					app.inputConcurrent,
 					app.clients.calls.total.listObjectsV2,
@@ -32,6 +32,8 @@ func statusWorker(app *S3StreamingLister, chstatus Queue) {
 					app.clients.calls.concurrent.listObjectsV2Input,
 					app.clients.calls.total.newFromConfig,
 					app.clients.calls.concurrent.newFromConfig,
+					app.clients.calls.total.sqsSendMessage,
+					app.clients.calls.concurrent.sqsSendMessage,
 				)
 			}
 			lastTotal = total

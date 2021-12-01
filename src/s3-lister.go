@@ -27,8 +27,8 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 	resp, err := client.ListObjectsV2(context.TODO(), &input)
 	if err != nil {
 		chstatus.push(RunStatus{err: &err})
-		fmt.Fprintf(os.Stderr, "Got error retrieving list of objects:%s", *input.Bucket)
-		fmt.Fprintln(os.Stderr, err)
+		// fmt.Fprintf(os.Stderr, "Got error retrieving list of objects:%s", *input.Bucket)
+		// fmt.Fprintln(os.Stderr, err)
 		return
 	}
 	app.clients.channels <- client

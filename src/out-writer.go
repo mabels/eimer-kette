@@ -24,8 +24,14 @@ func outWorker(app *S3StreamingLister, chstatus Queue) Queue {
 	if *app.config.format == "sqs" {
 		ow = makeSqsOutWriter(app, poolo, chstatus)
 	} else if *app.config.format == "mjson" {
+		if *app.config.outWorkers != 1 {
+			panic("do not use more workers for output")
+		}
 		ow = makeMjsonOutWriter(app.output.fileStream)
 	} else if *app.config.format == "awsls" {
+		if *app.config.outWorkers != 1 {
+			panic("do not use more workers for output")
+		}
 		ow = makeAwsLsOutWriter(app.output.fileStream)
 	}
 	go (func() {
