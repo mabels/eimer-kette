@@ -23,15 +23,21 @@ func (sow *SqsOutWriter) setup() OutWriter {
 	return sow
 }
 
-func (sow *SqsOutWriter) write(tos types.Object) {
-	sow.chunky.append(tos)
+func (sow *SqsOutWriter) write(items *[]types.Object) {
+	for _, item := range *items {
+		sow.chunky.append(item)
+	}
 }
 
 func (sow *SqsOutWriter) done() {
 	sow.chunky.done()
 }
 
-func makeSqsOutWriter(app *S3StreamingLister, pool *pond.WorkerPool, chStatus Queue) OutWriter {
+func makeSqsOutWriter(app *S3StreamingLister, chStatus Queue) OutWriter {
+	if *app.config.outputSqs.workers < 1 {
+		panic("you need at least one worker for sqs")
+	}
+	pool := pond.New(*app.config.outputSqs.workers, 0, pond.MinWorkers(*app.config.outputSqs.workers))
 	chunky, err := makeChunky(&events.S3Event{}, int(*app.config.outputSqs.maxMessageSize))
 	if err != nil {
 		chStatus.push(RunStatus{err: &err})
@@ -40,12 +46,11 @@ func makeSqsOutWriter(app *S3StreamingLister, pool *pond.WorkerPool, chStatus Qu
 		chunky:     chunky,
 		chStatus:   chStatus,
 		pool:       pool,
-		sqsClients: make(chan *sqs.Client, *app.config.outWorkers),
+		sqsClients: make(chan *sqs.Client, *app.config.outputSqs.workers),
 		app:        app,
 	}
 	sow.chunky.chunkedFn = func(c Chunky) {
 		pool.Submit(func() {
-
 			cframe := c.frame.(*events.S3Event)
 			cframe.Records = make([]events.S3EventRecord, len(c.records))
 			for i, item := range c.records {
@@ -72,7 +77,10 @@ func makeSqsOutWriter(app *S3StreamingLister, pool *pond.WorkerPool, chStatus Qu
 					Credentials: sow.app.aws.Credentials,
 				})
 			}
+			atomic.AddInt64(&sow.app.clients.calls.concurrent.sqsSendMessage, 1)
 			sow.sendSqsMessage(app, client, &jsonBytes, chStatus)
+			atomic.AddInt64(&sow.app.clients.calls.total.sqsSendMessage, 1)
+			atomic.AddInt64(&sow.app.clients.calls.concurrent.sqsSendMessage, -1)
 			sow.sqsClients <- client
 		})
 	}

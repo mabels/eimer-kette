@@ -16,9 +16,11 @@ func (ow *MjsonOutWriter) setup() OutWriter {
 	return ow
 }
 
-func (ow *MjsonOutWriter) write(tos types.Object) {
-	out, _ := json.Marshal(tos)
-	fmt.Fprintln(ow.output, string(out))
+func (ow *MjsonOutWriter) write(items *[]types.Object) {
+	for _, item := range *items {
+		out, _ := json.Marshal(item)
+		fmt.Fprintln(ow.output, string(out))
+	}
 }
 
 func (ow *MjsonOutWriter) done() {

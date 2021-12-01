@@ -27,7 +27,6 @@ type Config struct {
 	region        *string
 	maxKeys       *int
 	s3Workers     *int
-	outWorkers    *int
 	statsFragment *uint64
 	help          bool
 	versionFlag   bool
@@ -36,7 +35,8 @@ type Config struct {
 }
 
 type SqsParams struct {
-	url            *string
+	workers *int
+	url     *string
 	delay          *int32
 	maxMessageSize *int32
 }
@@ -84,7 +84,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	// bucket := nil
 	region := "eu-central-1"
 	s3Workers := 16
-	outWorkers := 1
+	outputSqsWorkers := 2
 	maxKeys := 1000
 	statsFragment := uint64(10000)
 	// allowed characters: https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html
@@ -108,6 +108,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 			prefixes:  &prefixes,
 			format:    &mjson,
 			outputSqs: SqsParams{
+				workers:        &outputSqsWorkers,
 				delay:          &outputSqsDelay,
 				url:            &outputSqsUrl,
 				maxMessageSize: &outputSqsMaxMessageSize,
@@ -115,7 +116,6 @@ func defaultS3StreamingLister() *S3StreamingLister {
 			bucket:        nil,
 			region:        &region,
 			s3Workers:     &s3Workers,
-			outWorkers:    &outWorkers,
 			maxKeys:       &maxKeys,
 			statsFragment: &statsFragment,
 			progress:      &progress,
@@ -172,11 +172,11 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.config.outputSqs.url = flags.String("outputSqsUrl", *app.config.outputSqs.url, "url")
 	app.config.outputSqs.delay = flags.Int32("outputSqsDelay", *app.config.outputSqs.delay, "delay")
 	app.config.outputSqs.maxMessageSize = flags.Int32("outputSqsMaxMessageSize", *app.config.outputSqs.maxMessageSize, "maxMessageSize")
+	app.config.outputSqs.workers = flags.Int("outputSqsWorkers", *app.config.outputSqs.workers, "number of output sqs workers")
 	app.config.bucket = flags.StringP("bucket", "b", "", "aws bucket name")
 	app.config.region = flags.String("region", *app.config.region, "aws region name")
 	app.config.maxKeys = flags.Int("maxKeys", *app.config.maxKeys, "aws maxKey pageElement size 1000")
-	app.config.s3Workers = flags.Int("s3Worker", *app.config.s3Workers, "number of query worker")
-	app.config.outWorkers = flags.Int("outWorkers", *app.config.outWorkers, "number of output worker")
+	app.config.s3Workers = flags.Int("s3Worker", *app.config.s3Workers, "number of query workers")
 	app.config.statsFragment = flags.Uint64("statsFragment", *app.config.statsFragment, "number statistics output")
 	app.config.progress = flags.Bool("progress", *app.config.progress, "progress output")
 	rootCmd.MarkFlagRequired("bucket")

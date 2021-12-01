@@ -15,9 +15,11 @@ func (ow *AwsLsOutWriter) setup() OutWriter {
 	return ow
 }
 
-func (ow *AwsLsOutWriter) write(item types.Object) {
-	fmt.Fprintf(ow.output, "%s %10d %s\n",
-		item.LastModified.Format("2006-01-02 15:04:05"), item.Size, *item.Key)
+func (ow *AwsLsOutWriter) write(items *[]types.Object) {
+	for _, item := range *items {
+		fmt.Fprintf(ow.output, "%s %10d %s\n",
+			item.LastModified.Format("2006-01-02 15:04:05"), item.Size, *item.Key)
+	}
 }
 
 func (ow *AwsLsOutWriter) done() {
