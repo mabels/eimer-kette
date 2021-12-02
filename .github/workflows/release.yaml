@@ -53,11 +53,11 @@ jobs:
           eval $(neckless kv ls --ghAddMask  --shKeyValue AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY)
           aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
           export VERSION=$(basename ${{ github.ref }})
-          docker build -t s3-streaming-listner:${{ github.sha }} --build-arg VERSION=$VERSION --build-arg COMMIT=${{ github.sha }} .
-          docker tag s3-streaming-listner:${{ github.sha }} public.ecr.aws/d3g6c8d4/s3-streaming-listner:$VERSION
-          docker push public.ecr.aws/d3g6c8d4/s3-streaming-listner:$VERSION
-          docker tag s3-streaming-listner:${{ github.sha }} public.ecr.aws/d3g6c8d4/s3-streaming-listner:latest
-          docker push public.ecr.aws/d3g6c8d4/s3-streaming-listner:latest
+          docker build -t s3-streaming-lister:${{ github.sha }} --build-arg VERSION=$VERSION --build-arg COMMIT=${{ github.sha }} .
+          docker tag s3-streaming-lister:${{ github.sha }} public.ecr.aws/d3g6c8d4/s3-streaming-lister:$VERSION
+          docker push public.ecr.aws/d3g6c8d4/s3-streaming-lister:$VERSION
+          docker tag s3-streaming-lister:${{ github.sha }} public.ecr.aws/d3g6c8d4/s3-streaming-lister:latest
+          docker push public.ecr.aws/d3g6c8d4/s3-streaming-lister:latest
 
   build-release:
     name: Build Release ${{ matrix.go }} ${{ join(matrix.platform, ',') }} neckless
