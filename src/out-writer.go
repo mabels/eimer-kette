@@ -26,6 +26,8 @@ func outWorker(app *S3StreamingLister, chstatus Queue) Queue {
 		ow = makeAwsLsOutWriter(app.output.fileStream)
 	} else if *app.config.format == "sqlite" {
 		ow = makeSqliteOutWriter(app)
+	} else if *app.config.format == "dynamo" {
+		ow = makeDynamoOutWriter(app)
 	}
 	ow.setup()
 	go (func() {
