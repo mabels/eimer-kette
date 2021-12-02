@@ -24,7 +24,6 @@ type Config struct {
 	delimiter     *string
 	format        *string
 	bucket        *string
-	region        *string
 	maxKeys       *int
 	s3Workers     *int
 	statsFragment *uint64
@@ -40,6 +39,7 @@ type AwsParams struct {
 	keyId          *string
 	secretAcessKey *string
 	sessionToken   *string
+	region         *string
 	cfg            aws.Config
 }
 
@@ -132,17 +132,27 @@ func defaultS3StreamingLister() *S3StreamingLister {
 				delay:          &outputSqsDelay,
 				url:            &outputSqsUrl,
 				maxMessageSize: &outputSqsMaxMessageSize,
+				aws: AwsParams{
+					region: &region,
+				},
 			},
 			lambda: LambdaParams{
 				deploy: &falseVal,
 				start:  &falseVal,
+				aws: AwsParams{
+					region: &region,
+				},
 			},
 			bucket:        nil,
-			region:        &region,
 			s3Workers:     &s3Workers,
 			maxKeys:       &maxKeys,
 			statsFragment: &statsFragment,
 			progress:      &progress,
+			listObject: ListObjectParams{
+				aws: AwsParams{
+					region: &region,
+				},
+			},
 		},
 		inputConcurrent: 0,
 		clients: Channels{
@@ -198,7 +208,6 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.config.outputSqs.maxMessageSize = flags.Int32("outputSqsMaxMessageSize", *app.config.outputSqs.maxMessageSize, "maxMessageSize")
 	app.config.outputSqs.workers = flags.Int("outputSqsWorkers", *app.config.outputSqs.workers, "number of output sqs workers")
 	app.config.bucket = flags.StringP("bucket", "b", "", "aws bucket name")
-	app.config.region = flags.String("region", *app.config.region, "aws region name")
 	app.config.maxKeys = flags.Int("maxKeys", *app.config.maxKeys, "aws maxKey pageElement size 1000")
 	app.config.s3Workers = flags.Int("s3Worker", *app.config.s3Workers, "number of query workers")
 	app.config.statsFragment = flags.Uint64("statsFragment", *app.config.statsFragment, "number statistics output")
@@ -222,17 +231,20 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 }
 
 func flagsAws(prefix string, flags *pflag.FlagSet, awsParams *AwsParams) {
-	defaultAWSAccessKeyId := ""
-	defaultAWSSecretAccessKey := ""
-	defaultAWSSessionToken := ""
+	defaultAWSAccessKeyId := *awsParams.keyId
+	defaultAWSSecretAccessKey := *awsParams.secretAcessKey
+	defaultAWSSessionToken := *awsParams.sessionToken
+	defaultAWSRegion := *awsParams.region
 	prefixes := []string{"", strings.ToUpper(fmt.Sprintf("%s_", prefix))}
 	envKeyIds := make([]string, len(prefixes))
 	envSecretAccessKeys := make([]string, len(prefixes))
 	envSessionTokens := make([]string, len(prefixes))
+	envRegions := make([]string, len(prefixes))
 	for i, p := range prefixes {
 		envKeyIds[i] = fmt.Sprintf("%sAWS_ACCESS_KEY_ID", p)
 		envSecretAccessKeys[i] = fmt.Sprintf("%sAWS_SECRET_ACCESS_KEY", p)
 		envSessionTokens[i] = fmt.Sprintf("%sAWS_SESSION_TOKEN", p)
+		envRegions[i] = fmt.Sprintf("%sAWS_REGION", p)
 	}
 	for i, _ := range prefixes {
 		tmp, found := os.LookupEnv(envKeyIds[i])
@@ -247,10 +259,15 @@ func flagsAws(prefix string, flags *pflag.FlagSet, awsParams *AwsParams) {
 		if found {
 			defaultAWSSessionToken = tmp
 		}
+		tmp, found = os.LookupEnv(envRegions[i])
+		if found {
+			defaultAWSRegion = tmp
+		}
 	}
 	awsParams.keyId = flags.String(fmt.Sprintf("%sAwsAccessKeyId", prefix), defaultAWSAccessKeyId, strings.Join(envKeyIds, ","))
 	awsParams.secretAcessKey = flags.String(fmt.Sprintf("%sAwsSecretAccessKey", prefix), defaultAWSSecretAccessKey, strings.Join(envSecretAccessKeys, ","))
 	awsParams.sessionToken = flags.String(fmt.Sprintf("%sAwsSessionToken", prefix), defaultAWSSessionToken, strings.Join(envSessionTokens, ","))
+	awsParams.region = flags.String(fmt.Sprintf("%sAwsRegion", prefix), defaultAWSRegion, strings.Join(envRegions, ","))
 }
 
 type MyCredentials struct {
@@ -292,13 +309,13 @@ func initS3StreamingLister(app *S3StreamingLister) {
 				SessionToken:    *awsParams.sessionToken,
 			},
 		}
-		fmt.Fprintln(os.Stderr, "Region=", *app.config.region)
+		fmt.Fprintln(os.Stderr, "Region=", *awsParams.region)
 		awsParams.cfg = aws.Config{
 			Credentials: &awsCredProvider,
 			// func (fn CredentialsProviderFunc) Retrieve(ctx context.Context) (Credentials, error) {
 			// return fn(ctx)
 			// },
-			Region: *app.config.region,
+			Region: *awsParams.region,
 		}
 	}
 }

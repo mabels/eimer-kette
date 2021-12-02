@@ -70,10 +70,7 @@ func makeSqsOutWriter(app *S3StreamingLister, chStatus Queue) OutWriter {
 				client = x
 			default:
 				atomic.AddInt64(&sow.app.clients.calls.total.newSqs, 1)
-				client = sqs.New(sqs.Options{
-					Region:      *sow.app.config.region,
-					Credentials: sow.app.config.outputSqs.aws.cfg.Credentials,
-				})
+				client = sqs.NewFromConfig(sow.app.config.outputSqs.aws.cfg)
 			}
 			atomic.AddInt64(&sow.app.clients.calls.concurrent.sqsSendMessage, 1)
 			sow.sendSqsMessage(app, client, &jsonBytes, chStatus)
