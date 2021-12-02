@@ -24,9 +24,7 @@ func (sow *SqsOutWriter) setup() OutWriter {
 }
 
 func (sow *SqsOutWriter) write(items *[]types.Object) {
-	for _, item := range *items {
-		sow.chunky.append(item)
-	}
+	sow.chunky.append(items)
 }
 
 func (sow *SqsOutWriter) done() {
@@ -49,7 +47,7 @@ func makeSqsOutWriter(app *S3StreamingLister, chStatus Queue) OutWriter {
 		sqsClients: make(chan *sqs.Client, *app.config.outputSqs.workers),
 		app:        app,
 	}
-	sow.chunky.chunkedFn = func(c Chunky) {
+	sow.chunky.chunkedFn = func(c *Chunky) {
 		pool.Submit(func() {
 			cframe := c.frame.(*events.S3Event)
 			cframe.Records = make([]events.S3EventRecord, len(c.records))
@@ -74,7 +72,7 @@ func makeSqsOutWriter(app *S3StreamingLister, chStatus Queue) OutWriter {
 				atomic.AddInt64(&sow.app.clients.calls.total.newSqs, 1)
 				client = sqs.New(sqs.Options{
 					Region:      *sow.app.config.region,
-					Credentials: sow.app.aws.Credentials,
+					Credentials: sow.app.config.outputSqs.aws.cfg.Credentials,
 				})
 			}
 			atomic.AddInt64(&sow.app.clients.calls.concurrent.sqsSendMessage, 1)

@@ -19,7 +19,8 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 		client = x
 	default:
 		atomic.AddInt64(&app.clients.calls.total.newFromConfig, 1)
-		client = s3.NewFromConfig(app.aws)
+		fmt.Fprintln(os.Stderr, app.config.listObject.aws.cfg)
+		client = s3.NewFromConfig(app.config.listObject.aws.cfg)
 	}
 	atomic.AddInt64(&app.clients.calls.concurrent.newFromConfig, -1)
 	atomic.AddInt64(&app.clients.calls.total.listObjectsV2, 1)

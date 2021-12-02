@@ -2,11 +2,17 @@ package main
 
 import (
 	"sync/atomic"
+
+	"github.com/aws/aws-lambda-go/lambda"
 )
 
 func main() {
 	app := defaultS3StreamingLister()
 	initS3StreamingLister(app)
+	if *app.config.lambda.start {
+		lambda.Start(AwsHandleRequest)
+		return
+	}
 
 	chstatus := makeChannelQueue(*app.config.outputSqs.workers * *app.config.s3Workers * 10)
 	cho := outWorker(app, chstatus)

@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -32,13 +32,33 @@ type Config struct {
 	versionFlag   bool
 	progress      *bool
 	outputSqs     SqsParams
+	listObject    ListObjectParams
+	lambda        LambdaParams
+}
+
+type AwsParams struct {
+	keyId          *string
+	secretAcessKey *string
+	sessionToken   *string
+	cfg            aws.Config
+}
+
+type LambdaParams struct {
+	deploy *bool
+	start  *bool
+	aws    AwsParams
 }
 
 type SqsParams struct {
-	workers *int
-	url     *string
+	workers        *int
+	url            *string
 	delay          *int32
 	maxMessageSize *int32
+	aws            AwsParams
+}
+
+type ListObjectParams struct {
+	aws AwsParams
 }
 
 type Calls struct {
@@ -68,7 +88,6 @@ type S3StreamingLister struct {
 	inputConcurrent int32
 	clients         Channels
 	output          Output
-	aws             aws.Config
 }
 
 var GitCommit string
@@ -87,6 +106,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	outputSqsWorkers := 2
 	maxKeys := 1000
 	statsFragment := uint64(10000)
+	falseVal := false
 	// allowed characters: https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html
 	prefixes := []string{
 		"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
@@ -113,6 +133,10 @@ func defaultS3StreamingLister() *S3StreamingLister {
 				url:            &outputSqsUrl,
 				maxMessageSize: &outputSqsMaxMessageSize,
 			},
+			lambda: LambdaParams{
+				deploy: &falseVal,
+				start:  &falseVal,
+			},
 			bucket:        nil,
 			region:        &region,
 			s3Workers:     &s3Workers,
@@ -136,9 +160,9 @@ func defaultS3StreamingLister() *S3StreamingLister {
 			},
 			channels: make(chan *s3.Client, s3Workers),
 		},
-		aws: *aws.NewConfig(),
 		output: Output{
 			fileStream: os.Stdout,
+			// aws:        *aws.NewConfig(),
 		},
 	}
 	return &app
@@ -180,13 +204,61 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.config.statsFragment = flags.Uint64("statsFragment", *app.config.statsFragment, "number statistics output")
 	app.config.progress = flags.Bool("progress", *app.config.progress, "progress output")
 	rootCmd.MarkFlagRequired("bucket")
-	// fmt.Fprintln(os.Stderr, string(out))
+
+	app.config.lambda.start = flags.Bool("lambdaStart", *app.config.lambda.start, "start lambda")
+	app.config.lambda.deploy = flags.Bool("lambdaDeploy", *app.config.lambda.deploy, "deploy the lambda")
+
+	flagsAws("lambda", flags, &app.config.lambda.aws)
+	flagsAws("listObject", flags, &app.config.listObject.aws)
+	flagsAws("outputSqs", flags, &app.config.outputSqs.aws)
+
 	rootCmd.SetArgs(osArgs[1:])
 	err := rootCmd.Execute()
-	// fmt.Fprintf(os.Stderr, "xxx:%s\n", rootCmd.Flags().Lookup("help").Value.String())
+
 	app.config.help = rootCmd.Flags().Lookup("help").Value.String() == "true"
 	app.config.versionFlag = rootCmd.Flags().Lookup("version").Value.String() == "true"
+
 	return err
+}
+
+func flagsAws(prefix string, flags *pflag.FlagSet, awsParams *AwsParams) {
+	defaultAWSAccessKeyId := ""
+	defaultAWSSecretAccessKey := ""
+	defaultAWSSessionToken := ""
+	prefixes := []string{"", strings.ToUpper(fmt.Sprintf("%s_", prefix))}
+	envKeyIds := make([]string, len(prefixes))
+	envSecretAccessKeys := make([]string, len(prefixes))
+	envSessionTokens := make([]string, len(prefixes))
+	for i, p := range prefixes {
+		envKeyIds[i] = fmt.Sprintf("%sAWS_ACCESS_KEY_ID", p)
+		envSecretAccessKeys[i] = fmt.Sprintf("%sAWS_SECRET_ACCESS_KEY", p)
+		envSessionTokens[i] = fmt.Sprintf("%sAWS_SESSION_TOKEN", p)
+	}
+	for i, _ := range prefixes {
+		tmp, found := os.LookupEnv(envKeyIds[i])
+		if found {
+			defaultAWSAccessKeyId = tmp
+		}
+		tmp, found = os.LookupEnv(envSecretAccessKeys[i])
+		if found {
+			defaultAWSSecretAccessKey = tmp
+		}
+		tmp, found = os.LookupEnv(envSessionTokens[i])
+		if found {
+			defaultAWSSessionToken = tmp
+		}
+	}
+	awsParams.keyId = flags.String(fmt.Sprintf("%sAwsAccessKeyId", prefix), defaultAWSAccessKeyId, strings.Join(envKeyIds, ","))
+	awsParams.secretAcessKey = flags.String(fmt.Sprintf("%sAwsSecretAccessKey", prefix), defaultAWSSecretAccessKey, strings.Join(envSecretAccessKeys, ","))
+	awsParams.sessionToken = flags.String(fmt.Sprintf("%sAwsSessionToken", prefix), defaultAWSSessionToken, strings.Join(envSessionTokens, ","))
+}
+
+type MyCredentials struct {
+	cred aws.Credentials
+}
+
+func (my *MyCredentials) Retrieve(ctx context.Context) (aws.Credentials, error) {
+	return my.cred, nil
 }
 
 func initS3StreamingLister(app *S3StreamingLister) {
@@ -203,9 +275,30 @@ func initS3StreamingLister(app *S3StreamingLister) {
 		os.Exit(1)
 		return
 	}
-	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(*app.config.region))
-	if err != nil {
-		panic("aws configuration error, " + err.Error())
+	for _, awsParams := range []*AwsParams{
+		&app.config.lambda.aws,
+		&app.config.listObject.aws,
+		&app.config.outputSqs.aws} {
+		// awsConfig, err := config.LoadOptions(context.TODO()) // config.WithRegion(*app.config.region),
+
+		// if err != nil {
+		// 	panic("aws configuration error, " + err.Error())
+		// }
+
+		awsCredProvider := MyCredentials{
+			cred: aws.Credentials{
+				AccessKeyID:     *awsParams.keyId,
+				SecretAccessKey: *awsParams.secretAcessKey,
+				SessionToken:    *awsParams.sessionToken,
+			},
+		}
+		fmt.Fprintln(os.Stderr, "Region=", *app.config.region)
+		awsParams.cfg = aws.Config{
+			Credentials: &awsCredProvider,
+			// func (fn CredentialsProviderFunc) Retrieve(ctx context.Context) (Credentials, error) {
+			// return fn(ctx)
+			// },
+			Region: *app.config.region,
+		}
 	}
-	app.aws = awsCfg
 }
