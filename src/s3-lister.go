@@ -19,7 +19,7 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 		client = x
 	default:
 		atomic.AddInt64(&app.clients.calls.total.newFromConfig, 1)
-		fmt.Fprintln(os.Stderr, app.config.listObject.aws.cfg)
+		//fmt.Fprintln(os.Stderr, app.config.listObject.aws.cfg)
 		client = s3.NewFromConfig(app.config.listObject.aws.cfg)
 	}
 	atomic.AddInt64(&app.clients.calls.concurrent.newFromConfig, -1)
@@ -39,12 +39,12 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 	if resp.NextContinuationToken != nil {
 		atomic.AddInt64(&app.clients.calls.total.listObjectsV2Input, 1)
 		atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2Input, 1)
-		if *app.config.strategie == "delimiter" {
-			delimiterStrategie(&app.config, input.Prefix, resp.NextContinuationToken, chi)
-		} else if *app.config.strategie == "letter" {
+		if *app.config.strategy == "delimiter" {
+			delimiterStrategy(&app.config, input.Prefix, resp.NextContinuationToken, chi)
+		} else if *app.config.strategy == "letter" {
 			atomic.AddInt32(&app.inputConcurrent, -1)
 			atomic.AddInt32(&app.inputConcurrent, int32(len(*app.config.prefixes)))
-			singleLetterStrategie(&app.config, input.Prefix, chi)
+			singleLetterStrategy(&app.config, input.Prefix, chi)
 			return
 		}
 	} else {
@@ -54,10 +54,10 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 	atomic.AddInt64(&app.clients.calls.total.listObjectsV2Input, int64(len(resp.CommonPrefixes)))
 	atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2Input, int64(len(resp.CommonPrefixes)))
 	for _, item := range resp.CommonPrefixes {
-		if *app.config.strategie == "delimiter" {
+		if *app.config.strategy == "delimiter" {
 			atomic.AddInt32(&app.inputConcurrent, 1)
-			delimiterStrategie(&app.config, item.Prefix, nil, chi)
-		} else if *app.config.strategie == "letter" {
+			delimiterStrategy(&app.config, item.Prefix, nil, chi)
+		} else if *app.config.strategy == "letter" {
 			out, _ := json.Marshal(resp.CommonPrefixes)
 			fmt.Fprintln(os.Stderr, string(out))
 			panic("letter should not go to this")
@@ -70,7 +70,7 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 	}
 }
 
-func delimiterStrategie(config *Config, prefix *string, next *string, chi Queue) {
+func delimiterStrategy(config *Config, prefix *string, next *string, chi Queue) {
 	chi.push(&s3.ListObjectsV2Input{
 		MaxKeys:           int32(*config.maxKeys),
 		Delimiter:         config.delimiter,
@@ -80,7 +80,7 @@ func delimiterStrategie(config *Config, prefix *string, next *string, chi Queue)
 	})
 }
 
-func singleLetterStrategie(config *Config, prefix *string, chi Queue) {
+func singleLetterStrategy(config *Config, prefix *string, chi Queue) {
 	for _, letter := range *config.prefixes {
 		nextPrefix := *prefix + letter
 		chi.push(&s3.ListObjectsV2Input{

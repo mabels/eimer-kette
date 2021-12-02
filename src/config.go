@@ -18,7 +18,7 @@ import (
 type Config struct {
 	gitCommit     string
 	version       string
-	strategie     *string
+	strategy      *string
 	prefixes      *[]string
 	prefix        *string
 	delimiter     *string
@@ -36,11 +36,11 @@ type Config struct {
 }
 
 type AwsParams struct {
-	keyId          *string
-	secretAcessKey *string
-	sessionToken   *string
-	region         *string
-	cfg            aws.Config
+	keyId           *string
+	secretAccessKey *string
+	sessionToken    *string
+	region          *string
+	cfg             aws.Config
 }
 
 type LambdaParams struct {
@@ -101,6 +101,9 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	outputSqsDelay := int32(10)
 	outputSqsMaxMessageSize := int32(137715)
 	// bucket := nil
+	keyId := ""
+	secretAccessKey := ""
+	sessionToken := ""
 	region := "eu-central-1"
 	s3Workers := 16
 	outputSqsWorkers := 2
@@ -116,7 +119,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 		"n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
 		"/", "!", "-", "_", ".", "*", "'", "(", ")",
 	}
-	strategie := "delimiter"
+	strategy := "delimiter"
 	progress := true
 	app := S3StreamingLister{
 		config: Config{
@@ -124,7 +127,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 			gitCommit: GitCommit,
 			prefix:    &prefix,
 			delimiter: &delimiter,
-			strategie: &strategie,
+			strategy:  &strategy,
 			prefixes:  &prefixes,
 			format:    &mjson,
 			outputSqs: SqsParams{
@@ -133,14 +136,20 @@ func defaultS3StreamingLister() *S3StreamingLister {
 				url:            &outputSqsUrl,
 				maxMessageSize: &outputSqsMaxMessageSize,
 				aws: AwsParams{
-					region: &region,
+					keyId:           &keyId,
+					secretAccessKey: &secretAccessKey,
+					sessionToken:    &sessionToken,
+					region:          &region,
 				},
 			},
 			lambda: LambdaParams{
 				deploy: &falseVal,
 				start:  &falseVal,
 				aws: AwsParams{
-					region: &region,
+					keyId:           &keyId,
+					secretAccessKey: &secretAccessKey,
+					sessionToken:    &sessionToken,
+					region:          &region,
 				},
 			},
 			bucket:        nil,
@@ -150,7 +159,10 @@ func defaultS3StreamingLister() *S3StreamingLister {
 			progress:      &progress,
 			listObject: ListObjectParams{
 				aws: AwsParams{
-					region: &region,
+					keyId:           &keyId,
+					secretAccessKey: &secretAccessKey,
+					sessionToken:    &sessionToken,
+					region:          &region,
 				},
 			},
 		},
@@ -198,7 +210,7 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 		SilenceUsage: true,
 	}
 	flags := rootCmd.Flags()
-	app.config.strategie = flags.String("strategie", *app.config.strategie, "delimiter | letter")
+	app.config.strategy = flags.String("strategy", *app.config.strategy, "delimiter | letter")
 	app.config.prefixes = flags.StringArray("prefixes", *app.config.prefixes, "prefixs (safe characters are default, see https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html )")
 	app.config.prefix = flags.String("prefix", *app.config.prefix, "aws prefix")
 	app.config.delimiter = flags.String("delimiter", *app.config.delimiter, "aws delimiter")
@@ -232,7 +244,7 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 
 func flagsAws(prefix string, flags *pflag.FlagSet, awsParams *AwsParams) {
 	defaultAWSAccessKeyId := *awsParams.keyId
-	defaultAWSSecretAccessKey := *awsParams.secretAcessKey
+	defaultAWSSecretAccessKey := *awsParams.secretAccessKey
 	defaultAWSSessionToken := *awsParams.sessionToken
 	defaultAWSRegion := *awsParams.region
 	prefixes := []string{"", strings.ToUpper(fmt.Sprintf("%s_", prefix))}
@@ -265,7 +277,7 @@ func flagsAws(prefix string, flags *pflag.FlagSet, awsParams *AwsParams) {
 		}
 	}
 	awsParams.keyId = flags.String(fmt.Sprintf("%sAwsAccessKeyId", prefix), defaultAWSAccessKeyId, strings.Join(envKeyIds, ","))
-	awsParams.secretAcessKey = flags.String(fmt.Sprintf("%sAwsSecretAccessKey", prefix), defaultAWSSecretAccessKey, strings.Join(envSecretAccessKeys, ","))
+	awsParams.secretAccessKey = flags.String(fmt.Sprintf("%sAwsSecretAccessKey", prefix), defaultAWSSecretAccessKey, strings.Join(envSecretAccessKeys, ","))
 	awsParams.sessionToken = flags.String(fmt.Sprintf("%sAwsSessionToken", prefix), defaultAWSSessionToken, strings.Join(envSessionTokens, ","))
 	awsParams.region = flags.String(fmt.Sprintf("%sAwsRegion", prefix), defaultAWSRegion, strings.Join(envRegions, ","))
 }
@@ -305,11 +317,11 @@ func initS3StreamingLister(app *S3StreamingLister) {
 		awsCredProvider := MyCredentials{
 			cred: aws.Credentials{
 				AccessKeyID:     *awsParams.keyId,
-				SecretAccessKey: *awsParams.secretAcessKey,
+				SecretAccessKey: *awsParams.secretAccessKey,
 				SessionToken:    *awsParams.sessionToken,
 			},
 		}
-		fmt.Fprintln(os.Stderr, "Region=", *awsParams.region)
+		// fmt.Fprintln(os.Stderr, "Region=", *awsParams.region)
 		awsParams.cfg = aws.Config{
 			Credentials: &awsCredProvider,
 			// func (fn CredentialsProviderFunc) Retrieve(ctx context.Context) (Credentials, error) {

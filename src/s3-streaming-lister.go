@@ -2,15 +2,13 @@ package main
 
 import (
 	"sync/atomic"
-
-	"github.com/aws/aws-lambda-go/lambda"
 )
 
 func main() {
 	app := defaultS3StreamingLister()
 	initS3StreamingLister(app)
 	if *app.config.lambda.start {
-		lambda.Start(AwsHandleRequest)
+		//FIXME: lambda.Start(AwsHandleRequest)
 		return
 	}
 
@@ -18,12 +16,12 @@ func main() {
 	cho := outWorker(app, chstatus)
 	chi := s3ListerWorker(app, cho, chstatus)
 
-	if *app.config.strategie == "delimiter" {
+	if *app.config.strategy == "delimiter" {
 		atomic.AddInt32(&app.inputConcurrent, 1)
-		delimiterStrategie(&app.config, app.config.prefix, nil, chi)
-	} else if *app.config.strategie == "letter" {
+		delimiterStrategy(&app.config, app.config.prefix, nil, chi)
+	} else if *app.config.strategy == "letter" {
 		atomic.AddInt32(&app.inputConcurrent, int32(len(*app.config.prefixes)))
-		singleLetterStrategie(&app.config, app.config.prefix, chi)
+		singleLetterStrategy(&app.config, app.config.prefix, chi)
 	}
 	statusWorker(app, chstatus)
 }
