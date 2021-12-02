@@ -54,7 +54,7 @@ jobs:
           aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
           docker build -t s3-streaming-listner:${{ github.sha }} --build-arg VERSION=${{ github.ref }} --build-arg COMMIT=${{ github.sha }} .
           docker tag s3-streaming-listner:${{ github.sha }} public.ecr.aws/d3g6c8d4/s3-streaming-listner:${{ github.ref }})
-          docker push public.ecr.aws/d3g6c8d4/s3-streaming-listner:${{ github.ref }})
+          docker push public.ecr.aws/d3g6c8d4/s3-streaming-listner:${{ github.ref }}
           docker tag s3-streaming-listner:${{ github.sha }} public.ecr.aws/d3g6c8d4/s3-streaming-listner:latest
           docker push public.ecr.aws/d3g6c8d4/s3-streaming-listner:latest
 
