@@ -36,6 +36,7 @@ jobs:
           path: upload_url.env
 
   docker-build:
+    runs-on: ubuntu-latest
     name: Create Docker 
     steps:
       - uses: actions/checkout@v2
