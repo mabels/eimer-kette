@@ -31,6 +31,7 @@ type Config struct {
 	versionFlag   bool
 	progress      *bool
 	outputSqs     SqsParams
+	outputSqlite  SqliteParams
 	listObject    ListObjectParams
 	lambda        LambdaParams
 }
@@ -55,6 +56,17 @@ type SqsParams struct {
 	delay          *int32
 	maxMessageSize *int32
 	aws            AwsParams
+}
+
+type SqliteParams struct {
+	workers  *int
+	cleanDb  *bool
+	filename *string
+	sqlTable *string
+	// url            *string
+	// delay          *int32
+	// maxMessageSize *int32
+	// aws            AwsParams
 }
 
 type ListObjectParams struct {
@@ -106,10 +118,12 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	sessionToken := ""
 	region := "eu-central-1"
 	s3Workers := 16
+	sqlWorkers := 8
 	outputSqsWorkers := 2
 	maxKeys := 1000
 	statsFragment := uint64(10000)
 	falseVal := false
+	sqlTables := ""
 	// allowed characters: https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html
 	prefixes := []string{
 		"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
@@ -121,6 +135,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	}
 	strategy := "delimiter"
 	progress := true
+	sqlFilename := "./file.sql"
 	app := S3StreamingLister{
 		config: Config{
 			version:   Version,
@@ -130,6 +145,12 @@ func defaultS3StreamingLister() *S3StreamingLister {
 			strategy:  &strategy,
 			prefixes:  &prefixes,
 			format:    &mjson,
+			outputSqlite: SqliteParams{
+				workers:  &sqlWorkers,
+				cleanDb:  &falseVal,
+				filename: &sqlFilename,
+				sqlTable: &sqlTables,
+			},
 			outputSqs: SqsParams{
 				workers:        &outputSqsWorkers,
 				delay:          &outputSqsDelay,
@@ -225,6 +246,11 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.config.statsFragment = flags.Uint64("statsFragment", *app.config.statsFragment, "number statistics output")
 	app.config.progress = flags.Bool("progress", *app.config.progress, "progress output")
 	rootCmd.MarkFlagRequired("bucket")
+
+	app.config.outputSqlite.cleanDb = flags.Bool("sqliteCleanDb", *app.config.outputSqlite.cleanDb, "set cleandb")
+	app.config.outputSqlite.workers = flags.Int("sqliteWorkers", *app.config.outputSqlite.workers, "writer workers")
+	app.config.outputSqlite.filename = flags.String("sqliteFilename", *app.config.outputSqlite.filename, "sqlite filename")
+	app.config.outputSqlite.sqlTable = flags.String("sqliteTable", *app.config.outputSqlite.sqlTable, "sqlite table name")
 
 	app.config.lambda.start = flags.Bool("lambdaStart", *app.config.lambda.start, "start lambda")
 	app.config.lambda.deploy = flags.Bool("lambdaDeploy", *app.config.lambda.deploy, "deploy the lambda")

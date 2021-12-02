@@ -24,7 +24,10 @@ func outWorker(app *S3StreamingLister, chstatus Queue) Queue {
 		ow = makeMjsonOutWriter(app.output.fileStream)
 	} else if *app.config.format == "awsls" {
 		ow = makeAwsLsOutWriter(app.output.fileStream)
+	} else if *app.config.format == "sqlite" {
+		ow = makeSqliteOutWriter(app)
 	}
+	ow.setup()
 	go (func() {
 		cho.wait(func(items interface{}) {
 			complete := items.(Complete)

@@ -2,13 +2,15 @@ package main
 
 import (
 	"sync/atomic"
+
+	"github.com/aws/aws-lambda-go/lambda"
 )
 
 func main() {
 	app := defaultS3StreamingLister()
 	initS3StreamingLister(app)
 	if *app.config.lambda.start {
-		//FIXME: lambda.Start(AwsHandleRequest)
+		lambda.Start(AwsHandleRequest)
 		return
 	}
 
