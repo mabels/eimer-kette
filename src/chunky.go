@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"sync"
 )
 
 type Chunky struct {
@@ -11,15 +12,24 @@ type Chunky struct {
 	frame       interface{}
 	frameSize   int
 	currentSize int
-	records     []interface{}
-	chunkedFn   func(c *Chunky)
+	records     chan interface{}
+	chunked     int
+	chunkedFn   func(c *Chunky, collect int)
+	mutex       sync.Mutex
 }
 
-func (chunky *Chunky) done() error {
+func (chunky *Chunky) done(collect int) error {
 	if chunky.frameSize < chunky.currentSize {
-		chunky.chunkedFn(chunky)
-		chunky.records = []interface{}{}
-		chunky.currentSize = chunky.frameSize
+		// len := len(chunky.records)
+		// myrecs := chunky.records[0:len]
+		// chunky.records = []interface{}{}
+		my := collect
+		if my < 0 {
+			my = len(chunky.records)
+		}
+		if my != 0 {
+			chunky.chunkedFn(chunky, my)
+		}
 	}
 	return nil
 }
@@ -41,28 +51,35 @@ func (chunky *Chunky) append(rowOrRows interface{}) error {
 		if err != nil {
 			return err
 		}
+		chunky.mutex.Lock()
 		// fmt.Fprintf(os.Stderr, "Is Value:%T,%d,%s\n", rowOrRows, len(jsonBytes), string(jsonBytes))
 		recordLen := len(jsonBytes)
-		if len(chunky.records) != 0 {
+		if chunky.chunked > 0 {
 			recordLen += 1 // comma
 		}
 		if recordLen >= chunky.maxSize {
 			return errors.New("row is bigger than maxSize")
 		}
 		// fmt.Fprintln(os.Stderr, "xxxx", chunky.currentSize, len(jsonBytes), chunky.maxSize)
+		needDone := 0
 		if chunky.currentSize+recordLen >= chunky.maxSize {
-			chunky.done()
+			needDone = chunky.chunked
+			chunky.chunked = 0
+			chunky.currentSize = chunky.frameSize
 		}
+		chunky.chunked++
 		chunky.currentSize += recordLen
-		chunky.records = append(chunky.records, rowOrRows)
+		chunky.records <- rowOrRows
+		chunky.mutex.Unlock()
+		chunky.done(needDone)
 	}
 	return nil
 }
 
-func makeChunky(frame interface{}, maxSize int, chunkedFn ...func(c *Chunky)) (Chunky, error) {
+func makeChunky(frame interface{}, maxSize int, chunkedFn ...func(c *Chunky, collect int)) (Chunky, error) {
 	jsonBytes, err := json.Marshal(frame)
 	if len(chunkedFn) == 0 {
-		chunkedFn = []func(c *Chunky){func(_ *Chunky) {}}
+		chunkedFn = []func(c *Chunky, co int){func(_ *Chunky, _ int) {}}
 	}
 	chunky := Chunky{
 		maxSize:     maxSize,
@@ -70,6 +87,8 @@ func makeChunky(frame interface{}, maxSize int, chunkedFn ...func(c *Chunky)) (C
 		frameSize:   len(jsonBytes),
 		currentSize: len(jsonBytes),
 		chunkedFn:   chunkedFn[0],
+		records:     make(chan interface{}, maxSize/10), // improve
+		mutex:       sync.Mutex{},
 	}
 	if err != nil {
 		return chunky, err

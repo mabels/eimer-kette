@@ -28,7 +28,7 @@ func (sow *SqsOutWriter) write(items *[]types.Object) {
 }
 
 func (sow *SqsOutWriter) done() {
-	sow.chunky.done()
+	sow.chunky.done(-1)
 }
 
 func makeSqsOutWriter(app *S3StreamingLister, chStatus Queue) OutWriter {
@@ -47,18 +47,20 @@ func makeSqsOutWriter(app *S3StreamingLister, chStatus Queue) OutWriter {
 		sqsClients: make(chan *sqs.Client, *app.config.outputSqs.workers),
 		app:        app,
 	}
-	sow.chunky.chunkedFn = func(c *Chunky) {
+	sow.chunky.chunkedFn = func(c *Chunky, collect int) {
 		pool.Submit(func() {
 			cframe := c.frame.(*events.S3Event)
-			cframe.Records = make([]events.S3EventRecord, len(c.records))
-			for i, item := range c.records {
+			cframe.Records = make([]events.S3EventRecord, collect)
+			for i := 0; i < collect; i++ {
+				item := <-c.records
 				cframe.Records[i] = events.S3EventRecord{
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: *app.config.bucket,
 						},
 						Object: events.S3Object{
-							Key: *item.(types.Object).Key,
+							Key:  *item.(types.Object).Key,
+							Size: item.(types.Object).Size,
 						},
 					},
 				}

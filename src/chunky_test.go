@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -18,13 +19,13 @@ type Frame struct {
 
 func TestEmptyArray(t *testing.T) {
 	frame := Frame{Id: "Test", Rows: []Cell{}}
-	_, err := makeChunky(frame, 4, func(c *Chunky) {
+	_, err := makeChunky(frame, 4, func(c *Chunky, _ int) {
 		t.Error("Should not Called")
 	})
 	if err == nil {
 		t.Error("should be to short")
 	}
-	chunky, err := makeChunky(&frame, 1000, func(c *Chunky) {
+	chunky, err := makeChunky(&frame, 1000, func(c *Chunky, _ int) {
 		t.Error("Should not Called")
 	})
 	if err != nil {
@@ -37,7 +38,7 @@ func TestEmptyArray(t *testing.T) {
 
 func TestRowToBig(t *testing.T) {
 	frame := Frame{Id: "Test", Rows: []Cell{}}
-	chunky, _ := makeChunky(&frame, 1000, func(c *Chunky) {
+	chunky, _ := makeChunky(&frame, 1000, func(c *Chunky, _ int) {
 		t.Error("Should not Called")
 	})
 	test := make([]byte, 10000)
@@ -48,15 +49,19 @@ func TestRowToBig(t *testing.T) {
 	if err == nil {
 		t.Error("should be an error")
 	}
-	chunky.done()
+	chunky.done(-1)
 }
 
 func TestLowFill(t *testing.T) {
 	frame := Frame{Id: "Test", Rows: []Cell{}}
 	chunkedRef := []int{10}
-	chunky, _ := makeChunky(&frame, 1000, func(c *Chunky) {
-		if len(c.records) != chunkedRef[0] {
-			t.Error("Should not Called", len(c.records))
+	chunky, _ := makeChunky(&frame, 1000, func(c *Chunky, collect int) {
+		fmt.Fprintln(os.Stderr, "XXXXX", collect)
+		if collect != chunkedRef[0] {
+			t.Error("Should not Called", collect)
+		}
+		for i := 0; i < collect; i++ {
+			<-c.records
 		}
 		chunkedRef = chunkedRef[1:]
 	})
@@ -70,11 +75,11 @@ func TestLowFill(t *testing.T) {
 			t.Error("should be an error")
 		}
 	}
-	chunky.done()
+	chunky.done(-1)
 	if len(chunkedRef) != 0 {
 		t.Error("chunkedRef")
 	}
-	chunky.done()
+	chunky.done(-1)
 }
 
 func TestChunkedFill(t *testing.T) {
@@ -91,23 +96,23 @@ func TestChunkedFill(t *testing.T) {
 		t.Error("there should be chunks for 2000=", sum, len(chunkedRef))
 	}
 	records := 0
-	chunky, _ := makeChunky(&frame, 1000, func(c *Chunky) {
+	chunky, _ := makeChunky(&frame, 1000, func(c *Chunky, collect int) {
 		// t.Error("XXXXX:", len(c.records))
-		if len(c.records) != chunkedRef[0] {
+		if collect != chunkedRef[0] {
 			t.Error("Should not Called", len(c.records))
 		}
 		cframe := c.frame.(*Frame)
-		cframe.Rows = make([]Cell, len(c.records))
-		for i, item := range c.records {
-			cframe.Rows[i] = Cell{
-				Id: reflect.ValueOf(item).FieldByName("Id").String(),
-			}
+		cframe.Rows = []Cell{}
+		for i := 0; i < collect; i++ {
+			cframe.Rows = append(cframe.Rows, Cell{
+				Id: reflect.ValueOf(<-c.records).FieldByName("Id").String(),
+			})
 		}
 		jsonBytes, _ := json.Marshal(cframe)
 		if len(jsonBytes) < c.frameSize || len(jsonBytes) >= c.maxSize {
 			t.Error(fmt.Sprintf("size error:jsonBytes=%d < c.frameSize=%d || jsonBytes=%d >= c.maxSize=%d", len(jsonBytes), c.frameSize, len(jsonBytes), c.maxSize))
 		}
-		records += len(c.records)
+		records += collect
 		chunkedRef = chunkedRef[1:]
 	})
 	test := make([]byte, 6)
@@ -122,7 +127,7 @@ func TestChunkedFill(t *testing.T) {
 			t.Error("should be an error")
 		}
 	}
-	chunky.done()
+	chunky.done(-1)
 	if records != 2000 {
 		t.Error("records=", records)
 	}
