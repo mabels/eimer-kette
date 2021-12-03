@@ -14,7 +14,7 @@ func main() {
 		return
 	}
 
-	chstatus := makeChannelQueue(*app.config.outputSqs.workers * *app.config.s3Workers * 10)
+	chstatus := makeChannelQueue(*app.config.output.Sqs.workers * *app.config.s3Workers * 10)
 	cho := outWorker(app, chstatus)
 	chi := s3ListerWorker(app, cho, chstatus)
 

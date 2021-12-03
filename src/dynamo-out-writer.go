@@ -73,7 +73,7 @@ func (sow *DynamoOutWriter) write(items *[]s3types.Object) {
 	default:
 		// atomic.AddInt64(&app.clients.calls.total.newFromConfig, 1)
 		//fmt.Fprintln(os.Stderr, app.config.listObject.aws.cfg)
-		client = dynamodb.NewFromConfig(sow.app.config.outputSqs.aws.cfg)
+		client = dynamodb.NewFromConfig(sow.app.config.output.DynamoDb.aws.cfg)
 	}
 	sow.pool.Submit(func() {
 		for _, item := range *items {
@@ -114,10 +114,10 @@ func (sow *DynamoOutWriter) done() {
 }
 
 func makeDynamoOutWriter(app *S3StreamingLister) OutWriter {
-	if *app.config.outputSqlite.workers < 1 {
+	if *app.config.output.DynamoDb.workers < 1 {
 		panic("you need at least one worker for sqs")
 	}
-	pool := pond.New(*app.config.outputSqlite.workers, 0, pond.MinWorkers(*app.config.outputSqlite.workers))
+	pool := pond.New(*app.config.output.DynamoDb.workers, *app.config.output.DynamoDb.workers)
 	// chunky, err := makeChunky(&events.S3Event{}, int(*app.config.outputSqs.maxMessageSize))
 	// if err != nil {
 	// 	chStatus.push(RunStatus{err: &err})
@@ -128,7 +128,7 @@ func makeDynamoOutWriter(app *S3StreamingLister) OutWriter {
 		pool: pool,
 		// sqsClients: make(chan *sqs.Client, *app.config.outputSqs.workers),
 		app: app,
-		dbs: make(chan *dynamodb.Client, *app.config.outputSqlite.workers),
+		dbs: make(chan *dynamodb.Client, *app.config.output.DynamoDb.workers),
 	}
 	return &sow
 }

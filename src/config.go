@@ -30,10 +30,16 @@ type Config struct {
 	help          bool
 	versionFlag   bool
 	progress      *bool
-	outputSqs     SqsParams
-	outputSqlite  SqliteParams
+	output        OutputParams
 	listObject    ListObjectParams
 	lambda        LambdaParams
+}
+
+type OutputParams struct {
+	Sqs      SqsParams
+	Sqlite   SqliteParams
+	S3Delete S3DeleteParams
+	DynamoDb DynamoDbParams
 }
 
 type AwsParams struct {
@@ -56,6 +62,16 @@ type SqsParams struct {
 	delay          *int32
 	maxMessageSize *int32
 	aws            AwsParams
+}
+
+type S3DeleteParams struct {
+	workers *int
+	aws     AwsParams
+}
+
+type DynamoDbParams struct {
+	workers *int
+	aws     AwsParams
 }
 
 type SqliteParams struct {
@@ -118,6 +134,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	sessionToken := ""
 	region := "eu-central-1"
 	s3Workers := 16
+	s3DeleteWorkers := 16
 	sqlWorkers := 8
 	outputSqsWorkers := 2
 	maxKeys := 1000
@@ -145,22 +162,42 @@ func defaultS3StreamingLister() *S3StreamingLister {
 			strategy:  &strategy,
 			prefixes:  &prefixes,
 			format:    &mjson,
-			outputSqlite: SqliteParams{
-				workers:  &sqlWorkers,
-				cleanDb:  &falseVal,
-				filename: &sqlFilename,
-				sqlTable: &sqlTables,
-			},
-			outputSqs: SqsParams{
-				workers:        &outputSqsWorkers,
-				delay:          &outputSqsDelay,
-				url:            &outputSqsUrl,
-				maxMessageSize: &outputSqsMaxMessageSize,
-				aws: AwsParams{
-					keyId:           &keyId,
-					secretAccessKey: &secretAccessKey,
-					sessionToken:    &sessionToken,
-					region:          &region,
+			output: OutputParams{
+				Sqlite: SqliteParams{
+					workers:  &sqlWorkers,
+					cleanDb:  &falseVal,
+					filename: &sqlFilename,
+					sqlTable: &sqlTables,
+				},
+				Sqs: SqsParams{
+					workers:        &outputSqsWorkers,
+					delay:          &outputSqsDelay,
+					url:            &outputSqsUrl,
+					maxMessageSize: &outputSqsMaxMessageSize,
+					aws: AwsParams{
+						keyId:           &keyId,
+						secretAccessKey: &secretAccessKey,
+						sessionToken:    &sessionToken,
+						region:          &region,
+					},
+				},
+				S3Delete: S3DeleteParams{
+					workers: &s3DeleteWorkers,
+					aws: AwsParams{
+						keyId:           &keyId,
+						secretAccessKey: &secretAccessKey,
+						sessionToken:    &sessionToken,
+						region:          &region,
+					},
+				},
+				DynamoDb: DynamoDbParams{
+					workers: &s3DeleteWorkers,
+					aws: AwsParams{
+						keyId:           &keyId,
+						secretAccessKey: &secretAccessKey,
+						sessionToken:    &sessionToken,
+						region:          &region,
+					},
 				},
 			},
 			lambda: LambdaParams{
@@ -236,28 +273,30 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.config.prefix = flags.String("prefix", *app.config.prefix, "aws prefix")
 	app.config.delimiter = flags.String("delimiter", *app.config.delimiter, "aws delimiter")
 	app.config.format = flags.String("format", *app.config.format, "mjson | sqs | awsls")
-	app.config.outputSqs.url = flags.String("outputSqsUrl", *app.config.outputSqs.url, "url")
-	app.config.outputSqs.delay = flags.Int32("outputSqsDelay", *app.config.outputSqs.delay, "delay")
-	app.config.outputSqs.maxMessageSize = flags.Int32("outputSqsMaxMessageSize", *app.config.outputSqs.maxMessageSize, "maxMessageSize")
-	app.config.outputSqs.workers = flags.Int("outputSqsWorkers", *app.config.outputSqs.workers, "number of output sqs workers")
+	app.config.output.Sqs.url = flags.String("outputSqsUrl", *app.config.output.Sqs.url, "url")
+	app.config.output.Sqs.delay = flags.Int32("outputSqsDelay", *app.config.output.Sqs.delay, "delay")
+	app.config.output.Sqs.maxMessageSize = flags.Int32("outputSqsMaxMessageSize", *app.config.output.Sqs.maxMessageSize, "maxMessageSize")
+	app.config.output.Sqs.workers = flags.Int("outputSqsWorkers", *app.config.output.Sqs.workers, "number of output sqs workers")
 	app.config.bucket = flags.StringP("bucket", "b", "", "aws bucket name")
 	app.config.maxKeys = flags.Int("maxKeys", *app.config.maxKeys, "aws maxKey pageElement size 1000")
 	app.config.s3Workers = flags.Int("s3Worker", *app.config.s3Workers, "number of query workers")
+	app.config.output.S3Delete.workers = flags.Int("outputS3DeleteWorkers", *app.config.output.S3Delete.workers, "number of output s3 delete workers")
 	app.config.statsFragment = flags.Uint64("statsFragment", *app.config.statsFragment, "number statistics output")
 	app.config.progress = flags.Bool("progress", *app.config.progress, "progress output")
 	rootCmd.MarkFlagRequired("bucket")
 
-	app.config.outputSqlite.cleanDb = flags.Bool("sqliteCleanDb", *app.config.outputSqlite.cleanDb, "set cleandb")
-	app.config.outputSqlite.workers = flags.Int("sqliteWorkers", *app.config.outputSqlite.workers, "writer workers")
-	app.config.outputSqlite.filename = flags.String("sqliteFilename", *app.config.outputSqlite.filename, "sqlite filename")
-	app.config.outputSqlite.sqlTable = flags.String("sqliteTable", *app.config.outputSqlite.sqlTable, "sqlite table name")
+	app.config.output.Sqlite.cleanDb = flags.Bool("sqliteCleanDb", *app.config.output.Sqlite.cleanDb, "set cleandb")
+	app.config.output.Sqlite.workers = flags.Int("sqliteWorkers", *app.config.output.Sqlite.workers, "writer workers")
+	app.config.output.Sqlite.filename = flags.String("sqliteFilename", *app.config.output.Sqlite.filename, "sqlite filename")
+	app.config.output.Sqlite.sqlTable = flags.String("sqliteTable", *app.config.output.Sqlite.sqlTable, "sqlite table name")
 
 	app.config.lambda.start = flags.Bool("lambdaStart", *app.config.lambda.start, "start lambda")
 	app.config.lambda.deploy = flags.Bool("lambdaDeploy", *app.config.lambda.deploy, "deploy the lambda")
 
 	flagsAws("lambda", flags, &app.config.lambda.aws)
 	flagsAws("listObject", flags, &app.config.listObject.aws)
-	flagsAws("outputSqs", flags, &app.config.outputSqs.aws)
+	flagsAws("outputSqs", flags, &app.config.output.Sqs.aws)
+	flagsAws("outputS3Delete", flags, &app.config.output.S3Delete.aws)
 
 	rootCmd.SetArgs(osArgs[1:])
 	err := rootCmd.Execute()
@@ -333,7 +372,8 @@ func initS3StreamingLister(app *S3StreamingLister) {
 	for _, awsParams := range []*AwsParams{
 		&app.config.lambda.aws,
 		&app.config.listObject.aws,
-		&app.config.outputSqs.aws} {
+		&app.config.output.Sqs.aws,
+		&app.config.output.S3Delete.aws} {
 		// awsConfig, err := config.LoadOptions(context.TODO()) // config.WithRegion(*app.config.region),
 
 		// if err != nil {

@@ -35,11 +35,11 @@ func (sow *SqsOutWriter) done() {
 }
 
 func makeSqsOutWriter(app *S3StreamingLister, chStatus Queue) OutWriter {
-	if *app.config.outputSqs.workers < 1 {
+	if *app.config.output.Sqs.workers < 1 {
 		panic("you need at least one worker for sqs")
 	}
-	pool := pond.New(*app.config.outputSqs.workers, *app.config.outputSqs.workers, pond.MinWorkers(*app.config.outputSqs.workers))
-	chunky, err := makeChunky(&events.S3Event{}, int(*app.config.outputSqs.maxMessageSize))
+	pool := pond.New(*app.config.output.Sqs.workers, *app.config.output.Sqs.workers)
+	chunky, err := makeChunky(&events.S3Event{}, int(*app.config.output.Sqs.maxMessageSize))
 	if err != nil {
 		chStatus.push(RunStatus{err: &err})
 	}
@@ -47,7 +47,7 @@ func makeSqsOutWriter(app *S3StreamingLister, chStatus Queue) OutWriter {
 		chunky:     chunky,
 		chStatus:   chStatus,
 		pool:       pool,
-		sqsClients: make(chan *sqs.Client, *app.config.outputSqs.workers),
+		sqsClients: make(chan *sqs.Client, *app.config.output.Sqs.workers),
 		app:        app,
 	}
 	sow.chunky.chunkedFn = func(c *Chunky, collect int) {
@@ -76,7 +76,7 @@ func makeSqsOutWriter(app *S3StreamingLister, chStatus Queue) OutWriter {
 				client = x
 			default:
 				atomic.AddInt64(&sow.app.clients.calls.total.newSqs, 1)
-				client = sqs.NewFromConfig(sow.app.config.outputSqs.aws.cfg)
+				client = sqs.NewFromConfig(sow.app.config.output.Sqs.aws.cfg)
 			}
 			atomic.AddInt64(&sow.app.clients.calls.concurrent.sqsSendMessage, 1)
 			sow.sendSqsMessage(app, client, &jsonBytes, chStatus)
@@ -93,8 +93,8 @@ func (sow *SqsOutWriter) sendSqsMessage(app *S3StreamingLister, sqsc *sqs.Client
 	atomic.AddInt64(&sow.app.clients.calls.total.sqsSendMessage, 1)
 	atomic.AddInt64(&sow.app.clients.calls.concurrent.sqsSendMessage, 1)
 	_, err := sqsc.SendMessage(context.TODO(), &sqs.SendMessageInput{
-		DelaySeconds: *app.config.outputSqs.delay,
-		QueueUrl:     app.config.outputSqs.url,
+		DelaySeconds: *app.config.output.Sqs.delay,
+		QueueUrl:     app.config.output.Sqs.url,
 		MessageBody:  &jsonStr,
 	})
 	atomic.AddInt64(&sow.app.clients.calls.concurrent.sqsSendMessage, -1)

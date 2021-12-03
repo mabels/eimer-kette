@@ -19,17 +19,17 @@ type SqlLiteOutWriter struct {
 }
 
 func (sow *SqlLiteOutWriter) setup() OutWriter {
-	if *sow.app.config.outputSqlite.cleanDb {
-		os.Remove(*sow.app.config.outputSqlite.filename)
+	if *sow.app.config.output.Sqlite.cleanDb {
+		os.Remove(*sow.app.config.output.Sqlite.filename)
 	}
 	var err error
-	sow.db, err = sql.Open("sqlite3", *sow.app.config.outputSqlite.filename)
+	sow.db, err = sql.Open("sqlite3", *sow.app.config.output.Sqlite.filename)
 	if err != nil {
 		panic(err)
 	}
 	var tableName string
-	if *sow.app.config.outputSqlite.sqlTable != "" {
-		tableName = *sow.app.config.outputSqlite.sqlTable
+	if *sow.app.config.output.Sqlite.sqlTable != "" {
+		tableName = *sow.app.config.output.Sqlite.sqlTable
 	} else {
 		tableName = strings.ReplaceAll(*sow.app.config.bucket, ".", "_")
 	}
@@ -71,10 +71,10 @@ func (sow *SqlLiteOutWriter) done() {
 }
 
 func makeSqliteOutWriter(app *S3StreamingLister) OutWriter {
-	if *app.config.outputSqlite.workers < 1 {
+	if *app.config.output.Sqlite.workers < 1 {
 		panic("you need at least one worker for sqs")
 	}
-	pool := pond.New(*app.config.outputSqlite.workers, 0, pond.MinWorkers(*app.config.outputSqlite.workers))
+	pool := pond.New(*app.config.output.Sqlite.workers, 0, pond.MinWorkers(*app.config.output.Sqlite.workers))
 	// chunky, err := makeChunky(&events.S3Event{}, int(*app.config.outputSqs.maxMessageSize))
 	// if err != nil {
 	// 	chStatus.push(RunStatus{err: &err})

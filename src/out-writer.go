@@ -28,6 +28,8 @@ func outWorker(app *S3StreamingLister, chstatus Queue) Queue {
 		ow = makeSqliteOutWriter(app)
 	} else if *app.config.format == "dynamo" {
 		ow = makeDynamoOutWriter(app)
+	} else if *app.config.format == "s3delete" {
+		ow = makeS3DeleteOutWriter(app, chstatus)
 	}
 	ow.setup()
 	go (func() {

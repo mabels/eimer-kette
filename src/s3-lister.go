@@ -65,7 +65,9 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 	}
 	// fmt.Fprintln(os.Stderr, "Post=", *input.Prefix, resp.NextContinuationToken,
 	// 	len(resp.Contents), len(resp.CommonPrefixes), app.inputConcurrent)
-	cho.push(Complete{todo: resp.Contents, completed: false})
+	if len(resp.Contents) > 0 {
+		cho.push(Complete{todo: resp.Contents, completed: false})
+	}
 	if atomic.CompareAndSwapInt32(&app.inputConcurrent, 0, 0) {
 		// fmt.Fprintln(os.Stderr, "Stop-Concurrent")
 		cho.push(Complete{todo: nil, completed: true})
