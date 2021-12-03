@@ -128,6 +128,7 @@ func makeDynamoOutWriter(app *S3StreamingLister) OutWriter {
 		pool: pool,
 		// sqsClients: make(chan *sqs.Client, *app.config.outputSqs.workers),
 		app: app,
+		dbs: make(chan *dynamodb.Client, *app.config.outputSqlite.workers),
 	}
 	return &sow
 }
