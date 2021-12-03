@@ -22,6 +22,7 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 		//fmt.Fprintln(os.Stderr, app.config.listObject.aws.cfg)
 		client = s3.NewFromConfig(app.config.listObject.aws.cfg)
 	}
+	// fmt.Fprintln(os.Stderr, "Pre=", *input.Prefix)
 	atomic.AddInt64(&app.clients.calls.concurrent.newFromConfig, -1)
 	atomic.AddInt64(&app.clients.calls.total.listObjectsV2, 1)
 	atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2, 1)
@@ -63,6 +64,8 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 			panic("letter should not go to this")
 		}
 	}
+	// fmt.Fprintln(os.Stderr, "Post=", *input.Prefix, resp.NextContinuationToken,
+	// 	len(resp.Contents), len(resp.CommonPrefixes), app.inputConcurrent)
 	cho.push(Complete{todo: resp.Contents, completed: false})
 	if atomic.CompareAndSwapInt32(&app.inputConcurrent, 0, 0) {
 		// fmt.Fprintln(os.Stderr, "Stop-Concurrent")
@@ -94,7 +97,7 @@ func singleLetterStrategy(config *Config, prefix *string, chi Queue) {
 
 func s3ListerWorker(app *S3StreamingLister, cho Queue, chstatus Queue) Queue {
 	chi := makeChannelQueue((*app.config.maxKeys) * *app.config.s3Workers)
-	pooli := pond.New(*app.config.s3Workers, *app.config.s3Workers)
+	pooli := pond.New(*app.config.s3Workers, *app.config.maxKeys*(*app.config.s3Workers))
 	go func() {
 		chi.wait(func(item interface{}) {
 			citem := *item.(*s3.ListObjectsV2Input)
