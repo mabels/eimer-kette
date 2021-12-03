@@ -57,6 +57,7 @@ func makeSqsOutWriter(app *S3StreamingLister, chStatus Queue) OutWriter {
 			for i := 0; i < collect; i++ {
 				item := <-c.records
 				cframe.Records[i] = events.S3EventRecord{
+					EventName: "ObjectCreated:Put",
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: *app.config.bucket,
