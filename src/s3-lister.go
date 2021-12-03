@@ -39,13 +39,12 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 
 	if resp.NextContinuationToken != nil {
 		atomic.AddInt64(&app.clients.calls.total.listObjectsV2Input, 1)
-		atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2Input, 1)
 		if *app.config.strategy == "delimiter" {
-			delimiterStrategy(&app.config, input.Prefix, resp.NextContinuationToken, chi)
+			delimiterStrategy(app, input.Prefix, resp.NextContinuationToken, chi)
 		} else if *app.config.strategy == "letter" {
 			atomic.AddInt32(&app.inputConcurrent, -1)
 			atomic.AddInt32(&app.inputConcurrent, int32(len(*app.config.prefixes)))
-			singleLetterStrategy(&app.config, input.Prefix, chi)
+			singleLetterStrategy(app, input.Prefix, chi)
 			return
 		}
 	} else {
@@ -57,7 +56,7 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 	for _, item := range resp.CommonPrefixes {
 		if *app.config.strategy == "delimiter" {
 			atomic.AddInt32(&app.inputConcurrent, 1)
-			delimiterStrategy(&app.config, item.Prefix, nil, chi)
+			delimiterStrategy(app, item.Prefix, nil, chi)
 		} else if *app.config.strategy == "letter" {
 			out, _ := json.Marshal(resp.CommonPrefixes)
 			fmt.Fprintln(os.Stderr, string(out))
@@ -73,31 +72,33 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 	}
 }
 
-func delimiterStrategy(config *Config, prefix *string, next *string, chi Queue) {
+func delimiterStrategy(app *S3StreamingLister, prefix *string, next *string, chi Queue) {
+	atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2Input, 1)
 	chi.push(&s3.ListObjectsV2Input{
-		MaxKeys:           int32(*config.maxKeys),
-		Delimiter:         config.delimiter,
+		MaxKeys:           int32(*app.config.maxKeys),
+		Delimiter:         app.config.delimiter,
 		Prefix:            prefix,
 		ContinuationToken: next,
-		Bucket:            config.bucket,
+		Bucket:            app.config.bucket,
 	})
 }
 
-func singleLetterStrategy(config *Config, prefix *string, chi Queue) {
-	for _, letter := range *config.prefixes {
+func singleLetterStrategy(app *S3StreamingLister, prefix *string, chi Queue) {
+	for _, letter := range *app.config.prefixes {
 		nextPrefix := *prefix + letter
+		atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2Input, 1)
 		chi.push(&s3.ListObjectsV2Input{
-			MaxKeys:   int32(*config.maxKeys),
-			Delimiter: config.delimiter,
+			MaxKeys:   int32(*app.config.maxKeys),
+			Delimiter: app.config.delimiter,
 			Prefix:    &nextPrefix,
-			Bucket:    config.bucket,
+			Bucket:    app.config.bucket,
 		})
 	}
 }
 
 func s3ListerWorker(app *S3StreamingLister, cho Queue, chstatus Queue) Queue {
 	chi := makeChannelQueue((*app.config.maxKeys) * *app.config.s3Workers)
-	pooli := pond.New(*app.config.s3Workers, *app.config.maxKeys*(*app.config.s3Workers))
+	pooli := pond.New(*app.config.s3Workers, len(*app.config.prefixes)**app.config.maxKeys*(*app.config.s3Workers))
 	go func() {
 		chi.wait(func(item interface{}) {
 			citem := *item.(*s3.ListObjectsV2Input)

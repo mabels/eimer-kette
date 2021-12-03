@@ -20,10 +20,10 @@ func main() {
 
 	if *app.config.strategy == "delimiter" {
 		atomic.AddInt32(&app.inputConcurrent, 1)
-		delimiterStrategy(&app.config, app.config.prefix, nil, chi)
+		delimiterStrategy(app, app.config.prefix, nil, chi)
 	} else if *app.config.strategy == "letter" {
 		atomic.AddInt32(&app.inputConcurrent, int32(len(*app.config.prefixes)))
-		singleLetterStrategy(&app.config, app.config.prefix, chi)
+		singleLetterStrategy(app, app.config.prefix, chi)
 	}
 	statusWorker(app, chstatus)
 }
