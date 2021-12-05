@@ -1,8 +1,8 @@
 package main
 
-type Queue interface {
-	notifyWaitAdded(fn func(q Queue))
-	notifyWaitDone(fn func(q Queue))
+type MyQueue interface {
+	notifyWaitAdded(fn func(q MyQueue))
+	notifyWaitDone(fn func(q MyQueue))
 	wait(fn func(a interface{}))
 	stop()
 	push(a interface{})
@@ -13,15 +13,15 @@ type ChannelQueue struct {
 	createWaitQ            chan (chan interface{})
 	completeWaitQ          chan (chan interface{})
 	waitQ                  chan (chan interface{})
-	notificationsWaitAdded []func(q Queue)
-	notificationsWaitDone  []func(q Queue)
+	notificationsWaitAdded []func(q MyQueue)
+	notificationsWaitDone  []func(q MyQueue)
 	// isAbort bool
 }
 
-func (cq *ChannelQueue) notifyWaitAdded(fn func(q Queue)) {
+func (cq *ChannelQueue) notifyWaitAdded(fn func(q MyQueue)) {
 	cq.notificationsWaitAdded = append(cq.notificationsWaitAdded, fn)
 }
-func (cq *ChannelQueue) notifyWaitDone(fn func(q Queue)) {
+func (cq *ChannelQueue) notifyWaitDone(fn func(q MyQueue)) {
 	cq.notificationsWaitDone = append(cq.notificationsWaitDone, fn)
 }
 
@@ -59,7 +59,7 @@ func (cq *ChannelQueue) push(item interface{}) {
 	cq.waitQ <- next
 }
 
-func makeChannelQueue(qbufferSize ...int) Queue {
+func makeChannelQueue(qbufferSize ...int) MyQueue {
 	if len(qbufferSize) == 0 {
 		qbufferSize = []int{1}
 	}

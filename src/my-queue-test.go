@@ -13,7 +13,7 @@ func TestChannelQueueNoPush(t *testing.T) {
 	finisched := make(chan bool)
 	waitExpected := []string{}
 	expectWait := make(chan bool, 1)
-	q.notifyWaitAdded(func(q Queue) {
+	q.notifyWaitAdded(func(q MyQueue) {
 		expectWait <- true
 	})
 	go func() {
@@ -43,7 +43,7 @@ func TestChannelQueueOnePush(t *testing.T) {
 	finisched := make(chan bool)
 	waitExpected := []string{"Hello"}
 	expectWait := make(chan bool, 1)
-	q.notifyWaitAdded(func(q Queue) {
+	q.notifyWaitAdded(func(q MyQueue) {
 		expectWait <- true
 	})
 	go func() {
@@ -118,7 +118,7 @@ func TestChannelQueueMultipleFivePush(t *testing.T) {
 	}
 	started := make(chan bool)
 	releaseNotifyAdd := tasks
-	q.notifyWaitAdded(func(q Queue) {
+	q.notifyWaitAdded(func(q MyQueue) {
 		releaseNotifyAdd -= 1
 		if releaseNotifyAdd <= 0 {
 			started <- true
@@ -130,7 +130,7 @@ func TestChannelQueueMultipleFivePush(t *testing.T) {
 	}
 	done := make(chan bool)
 	releaseNotifyDone := tasks
-	q.notifyWaitDone(func(q Queue) {
+	q.notifyWaitDone(func(q MyQueue) {
 		releaseNotifyDone -= 1
 		if releaseNotifyDone <= 0 {
 			done <- true

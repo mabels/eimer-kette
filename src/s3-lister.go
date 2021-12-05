@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, cho Queue, chstatus Queue) {
+func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi MyQueue, cho MyQueue, chstatus MyQueue) {
 	var client *s3.Client
 	atomic.AddInt64(&app.clients.calls.concurrent.newFromConfig, 1)
 	select {
@@ -74,7 +74,7 @@ func s3Lister(app *S3StreamingLister, input s3.ListObjectsV2Input, chi Queue, ch
 	}
 }
 
-func delimiterStrategy(app *S3StreamingLister, prefix *string, next *string, chi Queue) {
+func delimiterStrategy(app *S3StreamingLister, prefix *string, next *string, chi MyQueue) {
 	atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2Input, 1)
 	chi.push(&s3.ListObjectsV2Input{
 		MaxKeys:           int32(*app.config.maxKeys),
@@ -85,7 +85,7 @@ func delimiterStrategy(app *S3StreamingLister, prefix *string, next *string, chi
 	})
 }
 
-func singleLetterStrategy(app *S3StreamingLister, prefix *string, chi Queue) {
+func singleLetterStrategy(app *S3StreamingLister, prefix *string, chi MyQueue) {
 	for _, letter := range *app.config.prefixes {
 		nextPrefix := *prefix + letter
 		atomic.AddInt64(&app.clients.calls.concurrent.listObjectsV2Input, 1)
@@ -98,7 +98,7 @@ func singleLetterStrategy(app *S3StreamingLister, prefix *string, chi Queue) {
 	}
 }
 
-func s3ListerWorker(app *S3StreamingLister, cho Queue, chstatus Queue) Queue {
+func s3ListerWorker(app *S3StreamingLister, cho MyQueue, chstatus MyQueue) MyQueue {
 	chi := makeChannelQueue((*app.config.maxKeys) * *app.config.s3Workers)
 	pooli := pond.New(*app.config.s3Workers, len(*app.config.prefixes)**app.config.maxKeys*(*app.config.s3Workers))
 	go func() {

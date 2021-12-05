@@ -15,7 +15,7 @@ type OutWriter interface {
 	done()
 }
 
-func outWorker(app *S3StreamingLister, chstatus Queue) Queue {
+func outWorker(app *S3StreamingLister, chstatus MyQueue) MyQueue {
 	cho := makeChannelQueue(*app.config.maxKeys)
 	var ow OutWriter
 	if *app.config.format == "sqs" {

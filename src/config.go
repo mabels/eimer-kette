@@ -58,15 +58,17 @@ type LambdaParams struct {
 
 type SqsParams struct {
 	workers        *int
+	chunkSize      *int
 	url            *string
 	delay          *int32
-	maxMessageSize *int32
+	maxMessageSize *int
 	aws            AwsParams
 }
 
 type S3DeleteParams struct {
-	workers *int
-	aws     AwsParams
+	workers   *int
+	chunkSize *int
+	aws       AwsParams
 }
 
 type DynamoDbParams struct {
@@ -95,6 +97,8 @@ type Calls struct {
 	listObjectsV2Input int64
 	newSqs             int64
 	sqsSendMessage     int64
+	newS3              int64
+	s3Deletes          int64
 }
 
 type TotalCurrent struct {
@@ -127,7 +131,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	mjson := "mjson"
 	outputSqsUrl := ""
 	outputSqsDelay := int32(10)
-	outputSqsMaxMessageSize := int32(137715)
+	outputSqsMaxMessageSize := 137715
 	// bucket := nil
 	keyId := ""
 	secretAccessKey := ""
@@ -135,6 +139,8 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	region := "eu-central-1"
 	s3Workers := 16
 	s3DeleteWorkers := 16
+	s3DeleteChunkSize := 1000
+	sqsChunkSize := 1000
 	sqlWorkers := 8
 	outputSqsWorkers := 2
 	maxKeys := 1000
@@ -170,6 +176,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 					sqlTable: &sqlTables,
 				},
 				Sqs: SqsParams{
+					chunkSize:      &sqsChunkSize,
 					workers:        &outputSqsWorkers,
 					delay:          &outputSqsDelay,
 					url:            &outputSqsUrl,
@@ -182,7 +189,8 @@ func defaultS3StreamingLister() *S3StreamingLister {
 					},
 				},
 				S3Delete: S3DeleteParams{
-					workers: &s3DeleteWorkers,
+					workers:   &s3DeleteWorkers,
+					chunkSize: &s3DeleteChunkSize,
 					aws: AwsParams{
 						keyId:           &keyId,
 						secretAccessKey: &secretAccessKey,
@@ -273,14 +281,18 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.config.prefix = flags.String("prefix", *app.config.prefix, "aws prefix")
 	app.config.delimiter = flags.String("delimiter", *app.config.delimiter, "aws delimiter")
 	app.config.format = flags.String("format", *app.config.format, "mjson | sqs | awsls")
+
 	app.config.output.Sqs.url = flags.String("outputSqsUrl", *app.config.output.Sqs.url, "url")
 	app.config.output.Sqs.delay = flags.Int32("outputSqsDelay", *app.config.output.Sqs.delay, "delay")
-	app.config.output.Sqs.maxMessageSize = flags.Int32("outputSqsMaxMessageSize", *app.config.output.Sqs.maxMessageSize, "maxMessageSize")
+	app.config.output.Sqs.maxMessageSize = flags.Int("outputSqsMaxMessageSize", *app.config.output.Sqs.maxMessageSize, "maxMessageSize")
 	app.config.output.Sqs.workers = flags.Int("outputSqsWorkers", *app.config.output.Sqs.workers, "number of output sqs workers")
+	app.config.output.Sqs.chunkSize = flags.Int("outputSqsChunkSize", *app.config.output.Sqs.chunkSize, "size of typical object chunks")
+
 	app.config.bucket = flags.StringP("bucket", "b", "", "aws bucket name")
 	app.config.maxKeys = flags.Int("maxKeys", *app.config.maxKeys, "aws maxKey pageElement size 1000")
 	app.config.s3Workers = flags.Int("s3Worker", *app.config.s3Workers, "number of query workers")
 	app.config.output.S3Delete.workers = flags.Int("outputS3DeleteWorkers", *app.config.output.S3Delete.workers, "number of output s3 delete workers")
+	app.config.output.S3Delete.chunkSize = flags.Int("outputS3DeleteChunkSize", *app.config.output.S3Delete.chunkSize, "size of chunks send to s3 delete api")
 	app.config.statsFragment = flags.Uint64("statsFragment", *app.config.statsFragment, "number statistics output")
 	app.config.progress = flags.Bool("progress", *app.config.progress, "progress output")
 	rootCmd.MarkFlagRequired("bucket")

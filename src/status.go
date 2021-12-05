@@ -13,7 +13,7 @@ type RunStatus struct {
 	err        *error
 }
 
-func statusWorker(app *S3StreamingLister, chstatus Queue) {
+func statusWorker(app *S3StreamingLister, chstatus MyQueue) {
 	// fmt.Fprintf(os.Stderr, "statusWriter:0")
 	total := uint64(0)
 	lastTotal := uint64(0)
@@ -35,7 +35,7 @@ func statusWorker(app *S3StreamingLister, chstatus Queue) {
 		total += item.outObjects
 		if item.timed || item.completed || lastTotal/(*app.config.statsFragment) != total/(*app.config.statsFragment) {
 			if *app.config.progress {
-				fmt.Fprintf(os.Stderr, "Done=%d inputConcurrent=%d listObjectsV2=%d/%d listObjectsV2Input=%d/%d NewFromConfig=%d/%d SqsSendMessage=%d/%d\n",
+				fmt.Fprintf(os.Stderr, "Done=%d inputConcurrent=%d listObjectsV2=%d/%d listObjectsV2Input=%d/%d NewFromConfig=%d/%d SqsSendMessage=%d/%d S3Deletes=%d/%d\n",
 					total,
 					app.inputConcurrent,
 					app.clients.calls.total.listObjectsV2,
@@ -46,6 +46,8 @@ func statusWorker(app *S3StreamingLister, chstatus Queue) {
 					app.clients.calls.concurrent.newFromConfig,
 					app.clients.calls.total.sqsSendMessage,
 					app.clients.calls.concurrent.sqsSendMessage,
+					app.clients.calls.total.s3Deletes,
+					app.clients.calls.concurrent.s3Deletes,
 				)
 			}
 			lastTotal = total
