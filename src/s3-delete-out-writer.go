@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -14,6 +15,7 @@ type S3DeleteOutWriter struct {
 	chStatus           MyQueue
 	app                *S3StreamingLister
 	typesObjectChannel chan rxgo.Item
+	waitComplete       sync.Mutex
 	// observable         rxgo.Observable
 }
 
@@ -60,6 +62,7 @@ func (sow *S3DeleteOutWriter) setup() OutWriter {
 	go func() {
 		for range observable.Observe() {
 		}
+		sow.waitComplete.Unlock()
 	}()
 	return sow
 }
@@ -72,6 +75,8 @@ func (sow *S3DeleteOutWriter) write(items *[]types.Object) {
 
 func (sow *S3DeleteOutWriter) done() {
 	close(sow.typesObjectChannel)
+	sow.waitComplete.Lock()
+	sow.waitComplete.Unlock()
 }
 
 func makeS3DeleteOutWriter(app *S3StreamingLister, chStatus MyQueue) OutWriter {

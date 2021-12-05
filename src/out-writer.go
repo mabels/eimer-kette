@@ -25,7 +25,7 @@ func outWorker(app *S3StreamingLister, chstatus MyQueue) MyQueue {
 	} else if *app.config.format == "awsls" {
 		ow = makeAwsLsOutWriter(app.output.fileStream)
 	} else if *app.config.format == "sqlite" {
-		ow = makeSqliteOutWriter(app)
+		ow = makeSqliteOutWriter(app, chstatus)
 	} else if *app.config.format == "dynamo" {
 		ow = makeDynamoOutWriter(app)
 	} else if *app.config.format == "s3delete" {

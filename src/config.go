@@ -77,10 +77,11 @@ type DynamoDbParams struct {
 }
 
 type SqliteParams struct {
-	workers  *int
-	cleanDb  *bool
-	filename *string
-	sqlTable *string
+	workers    *int
+	commitSize *int
+	cleanDb    *bool
+	filename   *string
+	sqlTable   *string
 	// url            *string
 	// delay          *int32
 	// maxMessageSize *int32
@@ -159,6 +160,7 @@ func defaultS3StreamingLister() *S3StreamingLister {
 	strategy := "delimiter"
 	progress := true
 	sqlFilename := "./file.sql"
+	commitSize := 2000
 	app := S3StreamingLister{
 		config: Config{
 			version:   Version,
@@ -170,10 +172,11 @@ func defaultS3StreamingLister() *S3StreamingLister {
 			format:    &mjson,
 			output: OutputParams{
 				Sqlite: SqliteParams{
-					workers:  &sqlWorkers,
-					cleanDb:  &falseVal,
-					filename: &sqlFilename,
-					sqlTable: &sqlTables,
+					commitSize: &commitSize,
+					workers:    &sqlWorkers,
+					cleanDb:    &falseVal,
+					filename:   &sqlFilename,
+					sqlTable:   &sqlTables,
 				},
 				Sqs: SqsParams{
 					chunkSize:      &sqsChunkSize,
@@ -301,6 +304,7 @@ func parseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.config.output.Sqlite.workers = flags.Int("sqliteWorkers", *app.config.output.Sqlite.workers, "writer workers")
 	app.config.output.Sqlite.filename = flags.String("sqliteFilename", *app.config.output.Sqlite.filename, "sqlite filename")
 	app.config.output.Sqlite.sqlTable = flags.String("sqliteTable", *app.config.output.Sqlite.sqlTable, "sqlite table name")
+	app.config.output.Sqlite.commitSize = flags.Int("sqliteCommitSize", *app.config.output.Sqlite.commitSize, "sqlite table name")
 
 	app.config.lambda.start = flags.Bool("lambdaStart", *app.config.lambda.start, "start lambda")
 	app.config.lambda.deploy = flags.Bool("lambdaDeploy", *app.config.lambda.deploy, "deploy the lambda")
