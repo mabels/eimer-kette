@@ -1,4 +1,4 @@
-module s3-streaming-lister.adviser.com
+module github.com/mabels/s3-streaming-lister
 
 go 1.17
 

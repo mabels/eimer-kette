@@ -1,11 +1,11 @@
-package main
+package myqueue
 
 type MyQueue interface {
-	notifyWaitAdded(fn func(q MyQueue))
-	notifyWaitDone(fn func(q MyQueue))
-	wait(fn func(a interface{}))
-	stop()
-	push(a interface{})
+	NotifyWaitAdded(fn func(q MyQueue))
+	NotifyWaitDone(fn func(q MyQueue))
+	Wait(fn func(a interface{}))
+	Stop()
+	Push(a interface{})
 }
 
 type ChannelQueue struct {
@@ -18,14 +18,14 @@ type ChannelQueue struct {
 	// isAbort bool
 }
 
-func (cq *ChannelQueue) notifyWaitAdded(fn func(q MyQueue)) {
+func (cq *ChannelQueue) NotifyWaitAdded(fn func(q MyQueue)) {
 	cq.notificationsWaitAdded = append(cq.notificationsWaitAdded, fn)
 }
-func (cq *ChannelQueue) notifyWaitDone(fn func(q MyQueue)) {
+func (cq *ChannelQueue) NotifyWaitDone(fn func(q MyQueue)) {
 	cq.notificationsWaitDone = append(cq.notificationsWaitDone, fn)
 }
 
-func (cq *ChannelQueue) wait(fn func(a interface{})) {
+func (cq *ChannelQueue) Wait(fn func(a interface{})) {
 	// one item per waiter + on stop item for in wait calls
 	waitQ := make(chan interface{}, 1+1)
 	cq.createWaitQ <- waitQ
@@ -38,7 +38,7 @@ func (cq *ChannelQueue) wait(fn func(a interface{})) {
 	cq.completeWaitQ <- waitQ
 }
 
-func (cq *ChannelQueue) stop() {
+func (cq *ChannelQueue) Stop() {
 	for {
 		toBreak := false
 		select {
@@ -53,13 +53,13 @@ func (cq *ChannelQueue) stop() {
 	}
 }
 
-func (cq *ChannelQueue) push(item interface{}) {
+func (cq *ChannelQueue) Push(item interface{}) {
 	next := <-cq.waitQ
 	next <- item
 	cq.waitQ <- next
 }
 
-func makeChannelQueue(qbufferSize ...int) MyQueue {
+func MakeChannelQueue(qbufferSize ...int) MyQueue {
 	if len(qbufferSize) == 0 {
 		qbufferSize = []int{1}
 	}

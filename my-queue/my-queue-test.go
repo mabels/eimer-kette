@@ -1,4 +1,4 @@
-package main
+package myqueue
 
 import (
 	"fmt"
@@ -9,15 +9,15 @@ import (
 )
 
 func TestChannelQueueNoPush(t *testing.T) {
-	q := makeChannelQueue()
+	q := MakeChannelQueue()
 	finisched := make(chan bool)
 	waitExpected := []string{}
 	expectWait := make(chan bool, 1)
-	q.notifyWaitAdded(func(q MyQueue) {
+	q.NotifyWaitAdded(func(q MyQueue) {
 		expectWait <- true
 	})
 	go func() {
-		q.wait(func(a interface{}) {
+		q.Wait(func(a interface{}) {
 			if len(waitExpected) == 0 {
 				t.Error("should not happend")
 				return
@@ -31,7 +31,7 @@ func TestChannelQueueNoPush(t *testing.T) {
 	}()
 	<-expectWait
 	// q.push("Hello")
-	q.stop()
+	q.Stop()
 	<-finisched
 	if len(waitExpected) != 0 {
 		t.Error("expected should be empty")
@@ -39,16 +39,16 @@ func TestChannelQueueNoPush(t *testing.T) {
 }
 
 func TestChannelQueueOnePush(t *testing.T) {
-	q := makeChannelQueue()
+	q := MakeChannelQueue()
 	finisched := make(chan bool)
 	waitExpected := []string{"Hello"}
 	expectWait := make(chan bool, 1)
-	q.notifyWaitAdded(func(q MyQueue) {
+	q.NotifyWaitAdded(func(q MyQueue) {
 		expectWait <- true
 	})
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		q.wait(func(a interface{}) {
+		q.Wait(func(a interface{}) {
 			if len(waitExpected) == 0 {
 				t.Error("should not happend")
 				return
@@ -60,9 +60,9 @@ func TestChannelQueueOnePush(t *testing.T) {
 		})
 		finisched <- true
 	}()
-	q.push("Hello")
+	q.Push("Hello")
 	<-expectWait
-	q.stop()
+	q.Stop()
 	<-finisched
 	if len(waitExpected) != 0 {
 		t.Error("expected should be empty")
@@ -71,12 +71,12 @@ func TestChannelQueueOnePush(t *testing.T) {
 
 func TestChannelQueueFivePush(t *testing.T) {
 	// t.Error("Was")
-	q := makeChannelQueue()
+	q := MakeChannelQueue()
 	finisched := make(chan bool)
 	waitExpected := []string{"Hello0", "Hello1", "Hello2", "Hello3", "Hello4"}
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		q.wait(func(a interface{}) {
+		q.Wait(func(a interface{}) {
 			if len(waitExpected) == 0 {
 				t.Error("should not happend")
 				return
@@ -89,9 +89,9 @@ func TestChannelQueueFivePush(t *testing.T) {
 		finisched <- true
 	}()
 	for i := 0; i < 5; i += 1 {
-		q.push(fmt.Sprintf("Hello%d", i))
+		q.Push(fmt.Sprintf("Hello%d", i))
 	}
-	q.stop()
+	q.Stop()
 	<-finisched
 	if len(waitExpected) != 0 {
 		t.Error("expected should be empty")
@@ -101,13 +101,13 @@ func TestChannelQueueFivePush(t *testing.T) {
 func TestChannelQueueMultipleFivePush(t *testing.T) {
 	tasks := 5
 	pushes := 1000
-	q := makeChannelQueue(tasks)
+	q := MakeChannelQueue(tasks)
 	finisched := make(chan bool)
 	waitExpected := int64(0)
 	for ts := 0; ts < tasks; ts += 1 {
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			q.wait(func(a interface{}) {
+			q.Wait(func(a interface{}) {
 				atomic.AddInt64(&waitExpected, 1)
 				if !strings.HasPrefix(a.(string), "Hello") {
 					t.Error("Should be equal", a)
@@ -118,7 +118,7 @@ func TestChannelQueueMultipleFivePush(t *testing.T) {
 	}
 	started := make(chan bool)
 	releaseNotifyAdd := tasks
-	q.notifyWaitAdded(func(q MyQueue) {
+	q.NotifyWaitAdded(func(q MyQueue) {
 		releaseNotifyAdd -= 1
 		if releaseNotifyAdd <= 0 {
 			started <- true
@@ -126,17 +126,17 @@ func TestChannelQueueMultipleFivePush(t *testing.T) {
 	})
 	<-started
 	for i := 0; i < pushes; i += 1 {
-		q.push(fmt.Sprintf("Hello%d", i))
+		q.Push(fmt.Sprintf("Hello%d", i))
 	}
 	done := make(chan bool)
 	releaseNotifyDone := tasks
-	q.notifyWaitDone(func(q MyQueue) {
+	q.NotifyWaitDone(func(q MyQueue) {
 		releaseNotifyDone -= 1
 		if releaseNotifyDone <= 0 {
 			done <- true
 		}
 	})
-	q.stop()
+	q.Stop()
 	<-done
 	for ts := 0; ts < tasks; ts += 1 {
 		<-finisched
@@ -147,17 +147,17 @@ func TestChannelQueueMultipleFivePush(t *testing.T) {
 }
 
 func TestChannelQueueRecursiveStop(t *testing.T) {
-	q := makeChannelQueue()
+	q := MakeChannelQueue()
 	gotStop := make(chan bool)
 	go func() {
-		q.wait(func(a interface{}) {
+		q.Wait(func(a interface{}) {
 			fmt.Println("got a", a)
-			q.stop()
+			q.Stop()
 			fmt.Println("post stop")
 		})
 		gotStop <- true
 	}()
-	q.push(5)
+	q.Push(5)
 	<-gotStop
 
 }

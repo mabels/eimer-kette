@@ -1,4 +1,4 @@
-package main
+package outwriter
 
 import (
 	"context"
@@ -8,12 +8,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/reactivex/rxgo/v2"
+
+	"github.com/mabels/s3-streaming-lister/config"
+	myq "github.com/mabels/s3-streaming-lister/my-queue"
+	"github.com/mabels/s3-streaming-lister/status"
 )
 
 type S3DeleteOutWriter struct {
 	s3Clients          chan *s3.Client
-	chStatus           MyQueue
-	app                *S3StreamingLister
+	chStatus           myq.MyQueue
+	app                *config.S3StreamingLister
 	typesObjectChannel chan rxgo.Item
 	waitComplete       sync.Mutex
 	// observable         rxgo.Observable
@@ -25,11 +29,11 @@ func (sow *S3DeleteOutWriter) deleteObjects(items []interface{}) (*s3.DeleteObje
 	case x := <-sow.s3Clients:
 		client = x
 	default:
-		atomic.AddInt64(&sow.app.clients.calls.total.newS3, 1)
-		client = s3.NewFromConfig(sow.app.config.output.S3Delete.aws.cfg)
+		atomic.AddInt64(&sow.app.Clients.Calls.Total.NewS3, 1)
+		client = s3.NewFromConfig(sow.app.Config.Output.S3Delete.Aws.Cfg)
 	}
 	todelete := s3.DeleteObjectsInput{
-		Bucket: sow.app.config.bucket,
+		Bucket: sow.app.Config.Bucket,
 	}
 	todelete.Delete = &types.Delete{
 		Objects: make([]types.ObjectIdentifier, len(items)),
@@ -40,24 +44,24 @@ func (sow *S3DeleteOutWriter) deleteObjects(items []interface{}) (*s3.DeleteObje
 			Key: item.(types.Object).Key,
 		}
 	}
-	atomic.AddInt64(&sow.app.clients.calls.total.s3Deletes, 1)
-	atomic.AddInt64(&sow.app.clients.calls.concurrent.s3Deletes, 1)
+	atomic.AddInt64(&sow.app.Clients.Calls.Total.S3Deletes, 1)
+	atomic.AddInt64(&sow.app.Clients.Calls.Concurrent.S3Deletes, 1)
 	out, err := client.DeleteObjects(context.TODO(), &todelete)
-	atomic.AddInt64(&sow.app.clients.calls.concurrent.s3Deletes, -1)
+	atomic.AddInt64(&sow.app.Clients.Calls.Concurrent.S3Deletes, -1)
 	if err != nil {
-		sow.chStatus.push(RunStatus{err: &err})
+		sow.chStatus.Push(status.RunStatus{Err: &err})
 	}
 	sow.s3Clients <- client
 	return out, err
 }
 
 func (sow *S3DeleteOutWriter) setup() OutWriter {
-	sow.typesObjectChannel = make(chan rxgo.Item, *sow.app.config.output.S3Delete.chunkSize**sow.app.config.output.S3Delete.workers)
-	observable := rxgo.FromChannel(sow.typesObjectChannel).BufferWithCount(*sow.app.config.output.S3Delete.chunkSize).Map(
+	sow.typesObjectChannel = make(chan rxgo.Item, *sow.app.Config.Output.S3Delete.ChunkSize**sow.app.Config.Output.S3Delete.Workers)
+	observable := rxgo.FromChannel(sow.typesObjectChannel).BufferWithCount(*sow.app.Config.Output.S3Delete.ChunkSize).Map(
 		func(_ context.Context, item interface{}) (interface{}, error) {
 			return sow.deleteObjects(item.([]interface{}))
 		},
-		rxgo.WithPool(*sow.app.config.output.S3Delete.workers),
+		rxgo.WithPool(*sow.app.Config.Output.S3Delete.Workers),
 	)
 	go func() {
 		for range observable.Observe() {
@@ -79,14 +83,14 @@ func (sow *S3DeleteOutWriter) done() {
 	sow.waitComplete.Unlock()
 }
 
-func makeS3DeleteOutWriter(app *S3StreamingLister, chStatus MyQueue) OutWriter {
-	if *app.config.output.S3Delete.workers < 1 {
+func makeS3DeleteOutWriter(app *config.S3StreamingLister, chStatus myq.MyQueue) OutWriter {
+	if *app.Config.Output.S3Delete.Workers < 1 {
 		panic("you need at least one worker for s3 delete")
 	}
 	sow := S3DeleteOutWriter{
 		chStatus:  chStatus,
 		app:       app,
-		s3Clients: make(chan *s3.Client, *app.config.output.S3Delete.workers),
+		s3Clients: make(chan *s3.Client, *app.Config.Output.S3Delete.Workers),
 	}
 	return &sow
 }

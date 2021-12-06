@@ -1,4 +1,4 @@
-package main
+package outwriter
 
 import (
 	"context"
@@ -14,34 +14,36 @@ import (
 
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go/aws"
+
+	"github.com/mabels/s3-streaming-lister/config"
 )
 
 type DynamoOutWriter struct {
 	pool *pond.WorkerPool
-	app  *S3StreamingLister
+	app  *config.S3StreamingLister
 	dbs  chan *dynamodb.Client
 	// insertStmt *sql.Stmt
 }
 
 func (sow *DynamoOutWriter) setup() OutWriter {
 
-	// mySession := session.Must(session.NewSession(&sow.app.config.outputSqs.aws.cfg))
-	// sow.db = dynamodb.NewFromConfig(sow.app.config.outputSqs.aws.cfg)
-	//.NewConfig(sow.app.config.outputSqs.aws.cfg)
+	// mySession := session.Must(session.NewSession(&sow.app.Config.outputSqs.aws.cfg))
+	// sow.db = dynamodb.NewFromConfig(sow.app.Config.outputSqs.aws.cfg)
+	//.NewConfig(sow.app.Config.outputSqs.aws.cfg)
 
-	// if *sow.app.config.outputSqlite.cleanDb {
-	// 	os.Remove(*sow.app.config.outputSqlite.filename)
+	// if *sow.app.Config.outputSqlite.cleanDb {
+	// 	os.Remove(*sow.app.Config.outputSqlite.filename)
 	// }
 	// var err error
-	// sow.db, err = sql.Open("sqlite3", *sow.app.config.outputSqlite.filename)
+	// sow.db, err = sql.Open("sqlite3", *sow.app.Config.outputSqlite.filename)
 	// if err != nil {
 	// 	panic(err)
 	// }
 	// var tableName string
-	// if *sow.app.config.outputSqlite.sqlTable != "" {
-	// 	tableName = *sow.app.config.outputSqlite.sqlTable
+	// if *sow.app.Config.outputSqlite.sqlTable != "" {
+	// 	tableName = *sow.app.Config.outputSqlite.sqlTable
 	// } else {
-	// 	tableName = strings.ReplaceAll(*sow.app.config.bucket, ".", "_")
+	// 	tableName = strings.ReplaceAll(*sow.app.Config.bucket, ".", "_")
 	// }
 	// // defer sow.db.Close()
 	// sqlStmt := fmt.Sprintf(`
@@ -66,14 +68,14 @@ func (sow *DynamoOutWriter) setup() OutWriter {
 
 func (sow *DynamoOutWriter) write(items *[]s3types.Object) {
 	var client *dynamodb.Client
-	// atomic.AddInt64(&app.clients.calls.concurrent.newFromConfig, 1)
+	// atomic.AddInt64(&app.Clients.Calls.Concurrent.newFromConfig, 1)
 	select {
 	case x := <-sow.dbs:
 		client = x
 	default:
-		// atomic.AddInt64(&app.clients.calls.total.newFromConfig, 1)
-		//fmt.Fprintln(os.Stderr, app.config.listObject.aws.cfg)
-		client = dynamodb.NewFromConfig(sow.app.config.output.DynamoDb.aws.cfg)
+		// atomic.AddInt64(&app.Clients.Calls.Total.newFromConfig, 1)
+		//fmt.Fprintln(os.Stderr, app.Config.listObject.aws.cfg)
+		client = dynamodb.NewFromConfig(sow.app.Config.Output.DynamoDb.Aws.Cfg)
 	}
 	sow.pool.Submit(func() {
 		for _, item := range *items {
@@ -113,12 +115,12 @@ func (sow *DynamoOutWriter) write(items *[]s3types.Object) {
 func (sow *DynamoOutWriter) done() {
 }
 
-func makeDynamoOutWriter(app *S3StreamingLister) OutWriter {
-	if *app.config.output.DynamoDb.workers < 1 {
+func makeDynamoOutWriter(app *config.S3StreamingLister) OutWriter {
+	if *app.Config.Output.DynamoDb.Workers < 1 {
 		panic("you need at least one worker for sqs")
 	}
-	pool := pond.New(*app.config.output.DynamoDb.workers, *app.config.output.DynamoDb.workers)
-	// chunky, err := makeChunky(&events.S3Event{}, int(*app.config.outputSqs.maxMessageSize))
+	pool := pond.New(*app.Config.Output.DynamoDb.Workers, *app.Config.Output.DynamoDb.Workers)
+	// chunky, err := makeChunky(&events.S3Event{}, int(*app.Config.outputSqs.maxMessageSize))
 	// if err != nil {
 	// 	chStatus.push(RunStatus{err: &err})
 	// }
@@ -126,9 +128,9 @@ func makeDynamoOutWriter(app *S3StreamingLister) OutWriter {
 		// chunky:     chunky,
 		// chStatus:   chStatus,
 		pool: pool,
-		// sqsClients: make(chan *sqs.Client, *app.config.outputSqs.workers),
+		// sqsClients: make(chan *sqs.Client, *app.Config.outputSqs.workers),
 		app: app,
-		dbs: make(chan *dynamodb.Client, *app.config.output.DynamoDb.workers),
+		dbs: make(chan *dynamodb.Client, *app.Config.Output.DynamoDb.Workers),
 	}
 	return &sow
 }

@@ -1,4 +1,4 @@
-package main
+package outwriter
 
 import (
 	"encoding/json"
