@@ -85,7 +85,7 @@ func (sow *SqsOutWriter) BufferJsonSize(receive rxgo.Observable, opts ...rxgo.Op
 				eventSize += len(",")
 			}
 			mutex.Lock()
-			if currentSize+eventSize > *sow.app.Config.Output.Sqs.MaxMessageSize {
+			if currentSize+eventSize >= *sow.app.Config.Output.Sqs.MaxMessageSize {
 				out, err := json.Marshal(records)
 				if err != nil {
 					sow.chStatus.Push(status.RunStatus{Err: &err})
