@@ -1,8 +1,6 @@
 package main
 
 import (
-	"sync/atomic"
-
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/mabels/s3-streaming-lister/config"
 	"github.com/mabels/s3-streaming-lister/frontend"
@@ -21,14 +19,7 @@ func main() {
 
 	chstatus := myq.MakeChannelQueue(*app.Config.Output.Sqs.Workers * *app.Config.S3Workers * 10)
 	cho := ow.OutWriterProcessor(app, chstatus)
-	chi := frontend.S3ListerWorker(app, cho, chstatus)
+	frontend.Frontend(app, cho, chstatus)
 
-	if *app.Config.Strategy == "delimiter" {
-		atomic.AddInt32(&app.InputConcurrent, 1)
-		frontend.DelimiterStrategy(app, app.Config.Prefix, nil, chi)
-	} else if *app.Config.Strategy == "letter" {
-		atomic.AddInt32(&app.InputConcurrent, int32(len(*app.Config.Prefixes)))
-		frontend.SingleLetterStrategy(app, app.Config.Prefix, chi)
-	}
 	status.StatusWorker(app, chstatus)
 }

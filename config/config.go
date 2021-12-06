@@ -33,6 +33,18 @@ type Config struct {
 	Output        OutputParams
 	ListObject    ListObjectParams
 	Lambda        LambdaParams
+	Frontend      FrontendParams
+}
+
+type FrontendParams struct {
+	Sqlite   SqliteFrontendParams
+	Frontend *string
+}
+
+type SqliteFrontendParams struct {
+	Filename  *string
+	Query     *string
+	TableName *string
 }
 
 type OutputParams struct {
@@ -161,6 +173,8 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 	progress := true
 	sqlFilename := "./file.sql"
 	commitSize := 2000
+	frontend := "aws-s3"
+	sqlQuery := "select key, mtime, size from %s"
 	app := S3StreamingLister{
 		Config: Config{
 			Version:   Version,
@@ -170,6 +184,14 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 			Strategy:  &strategy,
 			Prefixes:  &prefixes,
 			Format:    &mjson,
+			Frontend: FrontendParams{
+				Frontend: &frontend,
+				Sqlite: SqliteFrontendParams{
+					Filename:  &sqlFilename,
+					Query:     &sqlQuery,
+					TableName: &sqlTables,
+				},
+			},
 			Output: OutputParams{
 				Sqlite: SqliteParams{
 					CommitSize: &commitSize,
@@ -308,6 +330,11 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 
 	app.Config.Lambda.Start = flags.Bool("lambdaStart", *app.Config.Lambda.Start, "start lambda")
 	app.Config.Lambda.Deploy = flags.Bool("lambdaDeploy", *app.Config.Lambda.Deploy, "deploy the lambda")
+
+	app.Config.Frontend.Frontend = flags.String("frontend", *app.Config.Frontend.Frontend, "aws-s3 sqlite")
+
+	app.Config.Frontend.Sqlite.Filename = flags.String("frontendSqliteFilename", *app.Config.Frontend.Sqlite.Filename, "file.sql")
+	app.Config.Frontend.Sqlite.Query = flags.String("frontendSqliteQuery", *app.Config.Frontend.Sqlite.Query, "sql query")
 
 	flagsAws("lambda", flags, &app.Config.Lambda.Aws)
 	flagsAws("listObject", flags, &app.Config.ListObject.Aws)

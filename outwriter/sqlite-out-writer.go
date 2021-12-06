@@ -8,12 +8,13 @@ import (
 	"strings"
 	"sync"
 
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/reactivex/rxgo/v2"
+
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/mabels/s3-streaming-lister/config"
 	myq "github.com/mabels/s3-streaming-lister/my-queue"
 	"github.com/mabels/s3-streaming-lister/status"
-	_ "github.com/mattn/go-sqlite3"
-	"github.com/reactivex/rxgo/v2"
 )
 
 type SqlLiteOutWriter struct {
@@ -39,7 +40,6 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 		tableName = *sow.app.Config.Output.Sqlite.SqlTable
 	} else {
 		tableName = strings.ReplaceAll(strings.ReplaceAll(*sow.app.Config.Bucket, ".", "_"), "-", "_")
-
 	}
 	// defer sow.db.Close()
 	if *sow.app.Config.Output.Sqlite.CleanDb {
@@ -47,7 +47,8 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 		create table '%s' (
 			key text,
 			mtime date,
-			size integer);
+			size integer,
+			created_at date);
 	`, tableName)
 		_, err = db.Exec(createTable)
 		if err != nil {
@@ -57,7 +58,7 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 	sow.typesObjectChannel = make(chan rxgo.Item, *sow.app.Config.Output.Sqlite.CommitSize**sow.app.Config.Output.Sqlite.Workers)
 
 	insertStmt, err := db.Prepare(
-		fmt.Sprintf("insert into %s(key, mtime, size) values(?, ?, ?)", tableName))
+		fmt.Sprintf("insert into %s(key, mtime, size, created_at) values(?, ?, ?, CURRENT_TIMESTAMP)", tableName))
 	if err != nil {
 		sow.chStatus.Push(status.RunStatus{Err: &err})
 	}
