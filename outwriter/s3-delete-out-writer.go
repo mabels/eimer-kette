@@ -3,7 +3,6 @@ package outwriter
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -29,7 +28,7 @@ func (sow *S3DeleteOutWriter) deleteObjects(items []interface{}) (*s3.DeleteObje
 	case x := <-sow.s3Clients:
 		client = x
 	default:
-		atomic.AddInt64(&sow.app.Clients.Calls.Total.NewS3, 1)
+		sow.app.Clients.Calls.Total.Inc("NewS3")
 		client = s3.NewFromConfig(sow.app.Config.Output.S3Delete.Aws.Cfg)
 	}
 	todelete := s3.DeleteObjectsInput{
@@ -44,10 +43,10 @@ func (sow *S3DeleteOutWriter) deleteObjects(items []interface{}) (*s3.DeleteObje
 			Key: item.(types.Object).Key,
 		}
 	}
-	atomic.AddInt64(&sow.app.Clients.Calls.Total.S3Deletes, 1)
-	atomic.AddInt64(&sow.app.Clients.Calls.Concurrent.S3Deletes, 1)
+	sow.app.Clients.Calls.Total.Inc("S3Deletes")
+	sow.app.Clients.Calls.Concurrent.Inc("S3Deletes")
 	out, err := client.DeleteObjects(context.TODO(), &todelete)
-	atomic.AddInt64(&sow.app.Clients.Calls.Concurrent.S3Deletes, -1)
+	sow.app.Clients.Calls.Concurrent.Dec("S3Deletes")
 	if err != nil {
 		sow.chStatus.Push(status.RunStatus{Err: &err})
 	}

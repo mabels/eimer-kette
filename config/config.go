@@ -104,23 +104,14 @@ type ListObjectParams struct {
 	Aws AwsParams
 }
 
-type Calls struct {
-	NewFromConfig      int64
-	ListObjectsV2      int64
-	ListObjectsV2Input int64
-	NewSqs             int64
-	SqsSendMessage     int64
-	NewS3              int64
-	S3Deletes          int64
-}
-
-type TotalCurrent struct {
+type Counter struct {
 	Total      Calls
 	Concurrent Calls
+	Error      Calls
 }
 
 type Channels struct {
-	Calls    TotalCurrent
+	Calls    Counter
 	Channels chan *s3.Client
 }
 
@@ -259,17 +250,9 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 		},
 		InputConcurrent: 0,
 		Clients: Channels{
-			Calls: TotalCurrent{
-				Total: Calls{
-					NewFromConfig:      0,
-					ListObjectsV2:      0,
-					ListObjectsV2Input: 0,
-				},
-				Concurrent: Calls{
-					NewFromConfig:      0,
-					ListObjectsV2:      0,
-					ListObjectsV2Input: 0,
-				},
+			Calls: Counter{
+				Total:      Calls{},
+				Concurrent: Calls{},
 			},
 			Channels: make(chan *s3.Client, s3Workers),
 		},

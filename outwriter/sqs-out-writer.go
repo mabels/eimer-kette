@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/alitto/pond"
@@ -148,18 +147,19 @@ func (sow *SqsOutWriter) sqsSendMessage(body *string) (*sqs.SendMessageOutput, e
 	case x := <-sow.sqsClients:
 		client = x
 	default:
-		atomic.AddInt64(&sow.app.Clients.Calls.Total.NewSqs, 1)
+		sow.app.Clients.Calls.Total.Inc("NewSqs")
 		client = sqs.NewFromConfig(sow.app.Config.Output.Sqs.Aws.Cfg)
 	}
-	atomic.AddInt64(&sow.app.Clients.Calls.Total.SqsSendMessage, 1)
-	atomic.AddInt64(&sow.app.Clients.Calls.Concurrent.SqsSendMessage, 1)
+	sow.app.Clients.Calls.Total.Inc("SqsSendMessage")
+	sow.app.Clients.Calls.Concurrent.Inc("SqsSendMessage")
 	out, err := client.SendMessage(context.TODO(), &sqs.SendMessageInput{
 		DelaySeconds: *sow.app.Config.Output.Sqs.Delay,
 		QueueUrl:     sow.app.Config.Output.Sqs.Url,
 		MessageBody:  body,
 	})
-	atomic.AddInt64(&sow.app.Clients.Calls.Concurrent.SqsSendMessage, -1)
+	sow.app.Clients.Calls.Concurrent.Dec("SqsSendMessage")
 	if err != nil {
+		sow.app.Clients.Calls.Error.Inc("SqsSendMessage")
 		sow.chStatus.Push(status.RunStatus{Err: &err})
 	}
 	sow.sqsClients <- client

@@ -3,6 +3,7 @@ package status
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -21,6 +22,31 @@ type RunStatus struct {
 type Complete struct {
 	Completed bool
 	Todo      []types.Object
+}
+
+func statString(calls ...*config.Calls) string {
+	keys := map[string]bool{}
+	for _, call := range calls {
+		for _, key := range call.Keys() {
+			keys[key] = true
+		}
+	}
+	out := []string{}
+	space := ""
+	for key := range keys {
+		out = append(out, space)
+		space = " "
+		out = append(out, fmt.Sprintf("%s=", key))
+		slash := ""
+		for _, call := range calls {
+			out = append(out, fmt.Sprintf("%s%d", slash, call.Get(key).Cnt))
+			slash = "/"
+		}
+		total := calls[0].Get(key)
+		out = append(out, fmt.Sprintf("%s%2.3f", slash, (float64(total.Duration)/float64(time.Microsecond))/float64(total.Cnt)))
+
+	}
+	return strings.Join(out, " ")
 }
 
 func StatusWorker(app *config.S3StreamingLister, chstatus myq.MyQueue) {
@@ -45,20 +71,10 @@ func StatusWorker(app *config.S3StreamingLister, chstatus myq.MyQueue) {
 		total += item.OutObjects
 		if item.Timed || item.Completed || lastTotal/(*app.Config.StatsFragment) != total/(*app.Config.StatsFragment) {
 			if *app.Config.Progress {
-				fmt.Fprintf(os.Stderr, "Done=%d inputConcurrent=%d listObjectsV2=%d/%d listObjectsV2Input=%d/%d NewFromConfig=%d/%d SqsSendMessage=%d/%d S3Deletes=%d/%d\n",
+				fmt.Fprintf(os.Stderr, "Done=%d inputConcurrent=%d %s\n",
 					total,
 					app.InputConcurrent,
-					app.Clients.Calls.Total.ListObjectsV2,
-					app.Clients.Calls.Concurrent.ListObjectsV2,
-					app.Clients.Calls.Total.ListObjectsV2Input,
-					app.Clients.Calls.Concurrent.ListObjectsV2Input,
-					app.Clients.Calls.Total.NewFromConfig,
-					app.Clients.Calls.Concurrent.NewFromConfig,
-					app.Clients.Calls.Total.SqsSendMessage,
-					app.Clients.Calls.Concurrent.SqsSendMessage,
-					app.Clients.Calls.Total.S3Deletes,
-					app.Clients.Calls.Concurrent.S3Deletes,
-				)
+					statString(&app.Clients.Calls.Total, &app.Clients.Calls.Concurrent, &app.Clients.Calls.Error))
 			}
 			lastTotal = total
 			if item.Completed {
