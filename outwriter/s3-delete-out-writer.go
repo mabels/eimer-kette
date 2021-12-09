@@ -79,8 +79,8 @@ func (sow *S3DeleteOutWriter) write(items *[]types.Object) {
 }
 
 func (sow *S3DeleteOutWriter) done() {
-	close(sow.typesObjectChannel)
 	sow.waitComplete.Lock()
+	close(sow.typesObjectChannel)
 	sow.waitComplete.Unlock()
 }
 

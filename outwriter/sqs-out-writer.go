@@ -150,19 +150,20 @@ func (sow *SqsOutWriter) sqsSendMessage(body *string) (*sqs.SendMessageOutput, e
 		sow.app.Clients.Calls.Total.Inc("NewSqs")
 		client = sqs.NewFromConfig(sow.app.Config.Output.Sqs.Aws.Cfg)
 	}
-	sow.app.Clients.Calls.Total.Inc("SqsSendMessage")
 	sow.app.Clients.Calls.Concurrent.Inc("SqsSendMessage")
+	started := time.Now()
 	out, err := client.SendMessage(context.TODO(), &sqs.SendMessageInput{
 		DelaySeconds: *sow.app.Config.Output.Sqs.Delay,
 		QueueUrl:     sow.app.Config.Output.Sqs.Url,
 		MessageBody:  body,
 	})
+	sow.app.Clients.Calls.Total.Duration("SqsSendMessage", started)
 	sow.app.Clients.Calls.Concurrent.Dec("SqsSendMessage")
+	sow.sqsClients <- client
 	if err != nil {
 		sow.app.Clients.Calls.Error.Inc("SqsSendMessage")
 		sow.chStatus.Push(status.RunStatus{Err: &err})
 	}
-	sow.sqsClients <- client
 	return out, err
 }
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/reactivex/rxgo/v2"
@@ -65,6 +66,7 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 
 	observable := rxgo.FromChannel(sow.typesObjectChannel).BufferWithCount(*sow.app.Config.Output.Sqlite.CommitSize).Map(
 		func(_ context.Context, items interface{}) (interface{}, error) {
+			started := time.Now()
 			tx, err := db.Begin()
 			if err != nil {
 				sow.chStatus.Push(status.RunStatus{Err: &err})
@@ -75,13 +77,16 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 				obj := item.(types.Object)
 				// fmt.Fprintf(os.Stderr, "%T %s %d", *obj.Key, obj.LastModified.String(), obj.Size)
 				_, err := my.Exec(*obj.Key, *obj.LastModified, obj.Size)
+				sow.app.Clients.Calls.Total.Inc("sqlite-insert")
 				if err != nil {
+					sow.app.Clients.Calls.Error.Inc("sqlite-insert")
 					sow.chStatus.Push(status.RunStatus{Err: &err})
 				}
 			}
 
 			//return sow.deleteObjects(item.([]interface{}))
 			err = tx.Commit()
+			sow.app.Clients.Calls.Total.Duration("sqlite-inserts", started)
 			if err != nil {
 				sow.chStatus.Push(status.RunStatus{Err: &err})
 				return nil, err
@@ -105,8 +110,8 @@ func (sow *SqlLiteOutWriter) write(items *[]types.Object) {
 }
 
 func (sow *SqlLiteOutWriter) done() {
-	close(sow.typesObjectChannel)
 	sow.waitComplete.Lock()
+	close(sow.typesObjectChannel)
 	sow.waitComplete.Unlock()
 }
 
