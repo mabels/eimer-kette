@@ -3,6 +3,7 @@ package status
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -25,25 +26,34 @@ type Complete struct {
 }
 
 func statString(calls ...*config.Calls) string {
-	keys := map[string]bool{}
+	keysMaps := map[string]bool{}
 	for _, call := range calls {
 		for _, key := range call.Keys() {
-			keys[key] = true
+			keysMaps[key] = true
 		}
 	}
+	keys := []string{}
+	for k, _ := range keysMaps {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	out := []string{}
 	space := ""
-	for key := range keys {
+	for _, key := range keys {
 		out = append(out, space)
 		space = " "
-		out = append(out, fmt.Sprintf("%s=", key))
+		items := []string{}
+		items = append(items, fmt.Sprintf("%s=", key))
 		slash := ""
 		for _, call := range calls {
-			out = append(out, fmt.Sprintf("%s%d", slash, call.Get(key).Cnt))
+			items = append(items, fmt.Sprintf("%s%d", slash, call.Get(key).Cnt))
 			slash = "/"
 		}
 		total := calls[0].Get(key)
-		out = append(out, fmt.Sprintf("%s%2.3f", slash, (float64(total.Duration)/float64(time.Microsecond))/float64(total.Cnt)))
+		if total.Duration > 0 {
+			items = append(items, fmt.Sprintf("%s%2.3f", slash, (float64(total.Duration)/float64(time.Second))/float64(total.Cnt)))
+		}
+		out = append(out, strings.Join(items, ""))
 
 	}
 	return strings.Join(out, " ")
@@ -52,7 +62,7 @@ func statString(calls ...*config.Calls) string {
 func StatusWorker(app *config.S3StreamingLister, chstatus myq.MyQueue) {
 	// fmt.Fprintf(os.Stderr, "statusWriter:0")
 	total := uint64(0)
-	lastTotal := uint64(0)
+	// lastTotal := uint64(0)
 	abortTimer := false
 	go func() {
 		for !abortTimer {
@@ -69,14 +79,15 @@ func StatusWorker(app *config.S3StreamingLister, chstatus myq.MyQueue) {
 			return
 		}
 		total += item.OutObjects
-		if item.Timed || item.Completed || lastTotal/(*app.Config.StatsFragment) != total/(*app.Config.StatsFragment) {
+		/* || lastTotal/(*app.Config.StatsFragment) != total/(*app.Config.StatsFragment) */
+		if item.Timed || item.Completed {
 			if *app.Config.Progress {
 				fmt.Fprintf(os.Stderr, "Done=%d inputConcurrent=%d %s\n",
 					total,
 					app.InputConcurrent,
 					statString(&app.Clients.Calls.Total, &app.Clients.Calls.Concurrent, &app.Clients.Calls.Error))
 			}
-			lastTotal = total
+			// lastTotal = total
 			if item.Completed {
 				abortTimer = true
 				chstatus.Stop()

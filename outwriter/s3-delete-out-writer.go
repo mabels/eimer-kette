@@ -3,6 +3,7 @@ package outwriter
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -43,9 +44,10 @@ func (sow *S3DeleteOutWriter) deleteObjects(items []interface{}) (*s3.DeleteObje
 			Key: item.(types.Object).Key,
 		}
 	}
-	sow.app.Clients.Calls.Total.Inc("S3Deletes")
 	sow.app.Clients.Calls.Concurrent.Inc("S3Deletes")
+	started := time.Now()
 	out, err := client.DeleteObjects(context.TODO(), &todelete)
+	sow.app.Clients.Calls.Total.Duration("S3Deletes", started)
 	sow.app.Clients.Calls.Concurrent.Dec("S3Deletes")
 	if err != nil {
 		sow.chStatus.Push(status.RunStatus{Err: &err})

@@ -15,11 +15,12 @@ type Calls struct {
 	mutex sync.Mutex
 }
 
-/*
-func (calls *Calls) Track() time.Time {
-	return time.Now()
+func MakeCalls() *Calls {
+	return &Calls{
+		calls: make(map[string]*CallStat),
+		mutex: sync.Mutex{},
+	}
 }
-*/
 
 func (calls *Calls) Duration(key string, start time.Time) {
 	since := time.Since(start)
@@ -30,7 +31,7 @@ func (calls *Calls) Duration(key string, start time.Time) {
 		calls.calls[key] = ret
 	}
 	ret.Cnt = ret.Cnt + 1
-	ret.Duration = ret.Duration + since.Microseconds()
+	ret.Duration = ret.Duration + since.Nanoseconds()
 	calls.mutex.Unlock()
 
 }
