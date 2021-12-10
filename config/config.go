@@ -29,7 +29,7 @@ type Config struct {
 	StatsFragment *uint64
 	Help          bool
 	VersionFlag   bool
-	Progress      *bool
+	Progress      *int
 	Output        OutputParams
 	ListObject    ListObjectParams
 	Lambda        LambdaParams
@@ -161,7 +161,7 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 		"/", "!", "-", "_", ".", "*", "'", "(", ")", "=",
 	}
 	strategy := "delimiter"
-	progress := true
+	progress := 5
 	sqlFilename := "./file.sql"
 	commitSize := 2000
 	frontend := "aws-s3"
@@ -303,7 +303,7 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.Config.Output.S3Delete.Workers = flags.Int("outputS3DeleteWorkers", *app.Config.Output.S3Delete.Workers, "number of output s3 delete workers")
 	app.Config.Output.S3Delete.ChunkSize = flags.Int("outputS3DeleteChunkSize", *app.Config.Output.S3Delete.ChunkSize, "size of chunks send to s3 delete api")
 	app.Config.StatsFragment = flags.Uint64("statsFragment", *app.Config.StatsFragment, "number statistics output")
-	app.Config.Progress = flags.Bool("progress", *app.Config.Progress, "progress output")
+	app.Config.Progress = flags.Int("progress", *app.Config.Progress, "progress output every x seconds")
 	rootCmd.MarkFlagRequired("bucket")
 
 	app.Config.Output.Sqlite.CleanDb = flags.Bool("sqliteCleanDb", *app.Config.Output.Sqlite.CleanDb, "set cleandb")

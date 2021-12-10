@@ -57,12 +57,15 @@ func StatusWorker(app *config.S3StreamingLister, chstatus myq.MyQueue) {
 	total := uint64(0)
 	// lastTotal := uint64(0)
 	abortTimer := false
-	go func() {
-		for !abortTimer {
-			time.Sleep(5 * time.Second)
-			chstatus.Push(RunStatus{Timed: true})
-		}
-	}()
+	if *app.Config.Progress > 0 {
+		go func() {
+			for !abortTimer {
+				time.Sleep(time.Duration(*app.Config.Progress) * time.Second)
+				chstatus.Push(RunStatus{Timed: true})
+			}
+		}()
+	}
+	took := time.Now()
 	// fmt.Fprintf(os.Stderr, "statusWriter:1")
 	chstatus.Wait(func(inItem interface{}) {
 		// fmt.Fprintf(os.Stderr, "statusWriter:2")
@@ -74,14 +77,17 @@ func StatusWorker(app *config.S3StreamingLister, chstatus myq.MyQueue) {
 		total += item.OutObjects
 		/* || lastTotal/(*app.Config.StatsFragment) != total/(*app.Config.StatsFragment) */
 		if item.Timed || item.Completed {
-			if *app.Config.Progress {
-				fmt.Fprintf(os.Stderr, "Done=%d inputConcurrent=%d %s\n",
-					total,
-					app.InputConcurrent,
-					statString(&app.Clients.Calls.Total, &app.Clients.Calls.Concurrent, &app.Clients.Calls.Error))
-			}
+			fmt.Fprintf(os.Stderr, "Now=%s Total=%d/%d %s\n",
+				time.Now().Format(time.RFC3339),
+				total,
+				app.InputConcurrent,
+				statString(&app.Clients.Calls.Total, &app.Clients.Calls.Concurrent, &app.Clients.Calls.Error))
 			// lastTotal = total
 			if item.Completed {
+				since := time.Since(took)
+				fmt.Fprintf(os.Stderr, "Now=%s Took=%d:%02d:%02d",
+					time.Now().Format(time.RFC3339),
+					int(since.Hours()), int(since.Minutes()), int(since.Seconds()))
 				abortTimer = true
 				chstatus.Stop()
 				return

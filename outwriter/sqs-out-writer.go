@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	sqstype "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/reactivex/rxgo/v2"
 
 	"github.com/mabels/s3-streaming-lister/config"
@@ -25,6 +25,7 @@ type SqsOutWriter struct {
 	typesObjectChannel chan rxgo.Item
 	waitComplete       sync.Mutex
 	writerCnt          int
+	sendId             int64
 }
 
 func (sow *SqsOutWriter) BufferJsonSize(receive rxgo.Observable, opts ...rxgo.Option) rxgo.Observable {
@@ -52,7 +53,7 @@ func (sow *SqsOutWriter) BufferJsonSize(receive rxgo.Observable, opts ...rxgo.Op
 		currentSize := len(frameBytes)
 		mutex := sync.Mutex{}
 		// pool := pond.New(*sow.app.Config.Output.Sqs.Workers, *sow.app.Config.Output.Sqs.Workers)
-		fmt.Fprintln(os.Stderr, "sqsobserver:enter")
+		// fmt.Fprintln(os.Stderr, "sqsobserver:enter")
 		for item := range receive.Observe() {
 			if item.V != nil {
 				object := item.V.(types.Object)
@@ -109,7 +110,7 @@ func (sow *SqsOutWriter) BufferJsonSize(receive rxgo.Observable, opts ...rxgo.Op
 				close(ch)
 			}
 		}
-		fmt.Fprintln(os.Stderr, "sqsobserver:leave")
+		// fmt.Fprintln(os.Stderr, "sqsobserver:leave")
 		sow.app.Clients.Calls.Concurrent.Add(len(records.Records), "SqsRecords")
 		sow.app.Clients.Calls.Total.Add(len(records.Records), "SqsRecords")
 		ch <- rxgo.Item{V: records}
@@ -118,13 +119,7 @@ func (sow *SqsOutWriter) BufferJsonSize(receive rxgo.Observable, opts ...rxgo.Op
 	return rxgo.FromChannel(ch)
 }
 
-func (sow *SqsOutWriter) sqsSendMessage(s3event *events.S3Event) (*sqs.SendMessageOutput, error) {
-	jsonBytes, err := json.Marshal(s3event)
-	if err != nil {
-		sow.chStatus.Push(status.RunStatus{Err: &err})
-	}
-	jsonStr := string(jsonBytes)
-
+func (sow *SqsOutWriter) sqsSendMessageBatch(s3events *[]events.S3Event) (*sqs.SendMessageBatchOutput, error) {
 	var client *sqs.Client
 	select {
 	case x := <-sow.sqsClients:
@@ -135,13 +130,29 @@ func (sow *SqsOutWriter) sqsSendMessage(s3event *events.S3Event) (*sqs.SendMessa
 	}
 	sow.app.Clients.Calls.Concurrent.Inc("SqsSendMessage")
 	started := time.Now()
-	out, err := client.SendMessage(context.TODO(), &sqs.SendMessageInput{
-		DelaySeconds: *sow.app.Config.Output.Sqs.Delay,
-		QueueUrl:     sow.app.Config.Output.Sqs.Url,
-		MessageBody:  &jsonStr,
+	entries := make([]sqstype.SendMessageBatchRequestEntry, 0, len(*s3events))
+	records := 0
+	for _, s3event := range *s3events {
+		records += len(s3event.Records)
+		jsonBytes, err := json.Marshal(s3event)
+		if err != nil {
+			sow.chStatus.Push(status.RunStatus{Err: &err})
+		}
+		jsonStr := string(jsonBytes)
+		sow.sendId++
+		sid := fmt.Sprintf("S-%d", sow.sendId)
+		entries = append(entries, sqstype.SendMessageBatchRequestEntry{
+			Id:           &sid,
+			DelaySeconds: *sow.app.Config.Output.Sqs.Delay,
+			MessageBody:  &jsonStr,
+		})
+	}
+	out, err := client.SendMessageBatch(context.TODO(), &sqs.SendMessageBatchInput{
+		QueueUrl: sow.app.Config.Output.Sqs.Url,
+		Entries:  entries,
 	})
-	sow.app.Clients.Calls.Concurrent.Add(-len(s3event.Records), "SqsRecords")
 	sow.app.Clients.Calls.Total.Duration("SqsSendMessage", started)
+	sow.app.Clients.Calls.Concurrent.Add(-records, "SqsRecords")
 	sow.app.Clients.Calls.Concurrent.Dec("SqsSendMessage")
 	sow.sqsClients <- client
 	if err != nil {
@@ -153,26 +164,25 @@ func (sow *SqsOutWriter) sqsSendMessage(s3event *events.S3Event) (*sqs.SendMessa
 
 func (sow *SqsOutWriter) setup() OutWriter {
 	sow.typesObjectChannel = make(chan rxgo.Item, *sow.app.Config.Output.Sqs.ChunkSize**sow.app.Config.Output.Sqs.Workers)
-	observable := sow.BufferJsonSize(rxgo.FromChannel(sow.typesObjectChannel)).Map(
-		func(_ context.Context, item interface{}) (interface{}, error) {
-			// out := "TODO"
-			// json, err := json.Marshal(events.S3Event)
-			s3Events := item.(events.S3Event)
-			// fmt.Fprintln(os.Stderr, "SendSqs:", len(s3Events.Records))
-			out, err := sow.sqsSendMessage(&s3Events)
+	observable := sow.BufferJsonSize(rxgo.FromChannel(sow.typesObjectChannel)).BufferWithCount(10).Map(
+		func(_ context.Context, items interface{}) (interface{}, error) {
+			s3Events := make([]events.S3Event, 0, len(items.([]interface{})))
+			for _, item := range items.([]interface{}) {
+				s3Events = append(s3Events, item.(events.S3Event))
+			}
+			out, err := sow.sqsSendMessageBatch(&s3Events)
 			if err != nil {
 				sow.chStatus.Push(status.RunStatus{Err: &err})
 			}
 			return out, err
-			// return nil, nil
 		},
 		rxgo.WithPool(*sow.app.Config.Output.Sqs.Workers),
 	)
 	go func() {
-		fmt.Fprintln(os.Stderr, "setup-runner-pre")
+		// fmt.Fprintln(os.Stderr, "setup-runner-pre")
 		for range observable.Observe() {
 		}
-		fmt.Fprintln(os.Stderr, "setup-runner-post")
+		// fmt.Fprintln(os.Stderr, "setup-runner-post")
 		sow.waitComplete.Unlock()
 	}()
 	return sow
@@ -190,10 +200,10 @@ func (sow *SqsOutWriter) write(items *[]types.Object) {
 
 func (sow *SqsOutWriter) done() {
 	close(sow.typesObjectChannel)
-	fmt.Fprintln(os.Stderr, "SqsWriterDone:enter")
+	// fmt.Fprintln(os.Stderr, "SqsWriterDone:enter")
 	sow.waitComplete.Lock()
 	// sow.waitComplete.Unlock()
-	fmt.Fprintln(os.Stderr, "SqsWriterDone:leave")
+	// fmt.Fprintln(os.Stderr, "SqsWriterDone:leave")
 }
 
 func makeSqsOutWriter(app *config.S3StreamingLister, chStatus myq.MyQueue) OutWriter {
