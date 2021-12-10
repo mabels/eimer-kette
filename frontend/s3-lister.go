@@ -87,11 +87,11 @@ func S3Lister(app *config.S3StreamingLister, input s3.ListObjectsV2Input, chi my
 	// fmt.Fprintln(os.Stderr, "Post=", *input.Prefix, resp.NextContinuationToken,
 	// 	len(resp.Contents), len(resp.CommonPrefixes), app.inputConcurrent)
 	if len(resp.Contents) > 0 {
-		cho.Push(status.Complete{Todo: resp.Contents, Completed: false})
+		cho.Push(Complete{Todo: resp.Contents, Completed: false})
 	}
 	if atomic.CompareAndSwapInt32(&app.InputConcurrent, 0, 0) {
 		// fmt.Fprintln(os.Stderr, "Stop-Concurrent")
-		cho.Push(status.Complete{Todo: nil, Completed: true})
+		cho.Push(Complete{Todo: nil, Completed: true})
 	}
 }
 

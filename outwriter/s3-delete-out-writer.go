@@ -93,5 +93,6 @@ func makeS3DeleteOutWriter(app *config.S3StreamingLister, chStatus myq.MyQueue) 
 		app:       app,
 		s3Clients: make(chan *s3.Client, *app.Config.Output.S3Delete.Workers),
 	}
+	sow.waitComplete.Lock()
 	return &sow
 }

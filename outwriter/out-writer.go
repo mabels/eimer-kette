@@ -1,9 +1,13 @@
 package outwriter
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"github.com/mabels/s3-streaming-lister/config"
+	"github.com/mabels/s3-streaming-lister/frontend"
 	myq "github.com/mabels/s3-streaming-lister/my-queue"
 	"github.com/mabels/s3-streaming-lister/status"
 )
@@ -32,13 +36,17 @@ func OutWriterProcessor(app *config.S3StreamingLister, chstatus myq.MyQueue) myq
 	}
 	ow.setup()
 	go (func() {
+		todos := 0
 		cho.Wait(func(items interface{}) {
-			complete := items.(status.Complete)
+			complete := items.(frontend.Complete)
 			chstatus.Push(status.RunStatus{OutObjects: uint64(len(complete.Todo))})
+			todos += len(complete.Todo)
+			// fmt.Fprintln(os.Stderr, "ow.write:", todos)
 			ow.write(&complete.Todo)
 			if complete.Completed {
+				fmt.Fprintln(os.Stderr, "outWriter-Complete-pre")
 				ow.done()
-				// fmt.Fprintln(os.Stderr, "outWriter-Complete")
+				fmt.Fprintln(os.Stderr, "outWriter-Complete-post")
 				chstatus.Push(status.RunStatus{OutObjects: 0, Completed: true})
 				cho.Stop()
 			}

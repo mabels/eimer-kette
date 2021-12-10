@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-
 	"github.com/mabels/s3-streaming-lister/config"
 	myq "github.com/mabels/s3-streaming-lister/my-queue"
 )
@@ -18,11 +16,6 @@ type RunStatus struct {
 	Timed      bool
 	OutObjects uint64
 	Err        *error
-}
-
-type Complete struct {
-	Completed bool
-	Todo      []types.Object
 }
 
 func statString(calls ...*config.Calls) string {
