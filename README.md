@@ -37,7 +37,16 @@ Alternatively, you can export all file names directly to your SQS without the ne
     --format sqs
 ```
 
+Delete files from a S3 Bucket:
+```
+./s3-streaming-lister 
+    --bucket YOUR_BUCKET_NAME  \
+    --format s3delete \
+    --outputS3DeleteWorkers 3
+```
+
 List all possible parameters:
 ```
 ./s3-streaming-lister --help
 ```
+
