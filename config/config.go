@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -407,20 +408,30 @@ func InitS3StreamingLister(app *S3StreamingLister) {
 		// 	panic("aws configuration error, " + err.Error())
 		// }
 
-		awsCredProvider := MyCredentials{
-			cred: aws.Credentials{
-				AccessKeyID:     *awsParams.KeyId,
-				SecretAccessKey: *awsParams.SecretAccessKey,
-				SessionToken:    *awsParams.SessionToken,
-			},
-		}
-		// fmt.Fprintln(os.Stderr, "Region=", *awsParams.region)
-		awsParams.Cfg = aws.Config{
-			Credentials: &awsCredProvider,
-			// func (fn CredentialsProviderFunc) Retrieve(ctx context.Context) (Credentials, error) {
-			// return fn(ctx)
-			// },
-			Region: *awsParams.Region,
+		if awsParams.KeyId == nil || len(*awsParams.KeyId) == 0 ||
+			awsParams.SecretAccessKey == nil || len(*awsParams.SecretAccessKey) == 0 ||
+			awsParams.SessionToken == nil || len(*awsParams.SessionToken) == 0 {
+			cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(*awsParams.Region))
+			if err != nil {
+				println("could not load aws config")
+			}
+			awsParams.Cfg = cfg
+		} else {
+			awsCredProvider := MyCredentials{
+				cred: aws.Credentials{
+					AccessKeyID:     *awsParams.KeyId,
+					SecretAccessKey: *awsParams.SecretAccessKey,
+					SessionToken:    *awsParams.SessionToken,
+				},
+			}
+			// fmt.Fprintln(os.Stderr, "Region=", *awsParams.region)
+			awsParams.Cfg = aws.Config{
+				Credentials: &awsCredProvider,
+				// func (fn CredentialsProviderFunc) Retrieve(ctx context.Context) (Credentials, error) {
+				// return fn(ctx)
+				// },
+				Region: *awsParams.Region,
+			}
 		}
 	}
 }
