@@ -1,0 +1,56 @@
+name: Go
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.17
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Test
+      run: go test -v ./...
+    -
+      name: Run GoReleaser
+      uses: goreleaser/goreleaser-action@v2
+      if: startsWith(github.ref, 'refs/tags/v')
+      with:
+        version: latest
+        args: release --rm-dist
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker-build:
+    runs-on: ubuntu-latest
+    name: Create Docker 
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: mabels/neckless@main
+        with:
+          version: v0.1.7
+
+      - name: Building
+        env:
+          NECKLESS_PRIVKEY: ${{ secrets.NECKLESS_PRIVKEY }}
+        run: |
+          export DOCKER_CONFIG=$HOME/.docker
+          eval $(neckless kv ls --ghAddMask  --shKeyValue AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY)
+          aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+          export VERSION=$(basename ${{ github.ref }})
+          docker build -t s3-streaming-lister:${{ github.sha }} --build-arg VERSION=$VERSION --build-arg COMMIT=${{ github.sha }} .
+          docker tag s3-streaming-lister:${{ github.sha }} public.ecr.aws/d3g6c8d4/s3-streaming-lister:$VERSION
+          docker push public.ecr.aws/d3g6c8d4/s3-streaming-lister:$VERSION
+          docker tag s3-streaming-lister:${{ github.sha }} public.ecr.aws/d3g6c8d4/s3-streaming-lister:latest
+          docker push public.ecr.aws/d3g6c8d4/s3-streaming-lister:latest

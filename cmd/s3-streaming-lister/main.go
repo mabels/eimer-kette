@@ -9,7 +9,12 @@ import (
 	"github.com/mabels/s3-streaming-lister/status"
 )
 
+var version = "develop"
+var commit = "unknown"
+
 func main() {
+	config.Version = version
+	config.GitCommit = commit
 	app := config.DefaultS3StreamingLister()
 	config.InitS3StreamingLister(app)
 	if *app.Config.Lambda.Start {
