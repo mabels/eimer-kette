@@ -8,8 +8,8 @@ builds:
       - linux
       - windows
       - darwin
-    main: ./cmd/s3-streaming-lister
-    binary: s3-streaming-listener
+    main: ./cmd/eimer-kette
+    binary: eimer-kette
     tags:
       - release
 archives:
@@ -19,7 +19,7 @@ archives:
       windows: Windows
       386: i386
       amd64: x86_64
-    name_template: "s3-streaming-listener_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "eimer-kette_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 checksum:
   name_template: 'checksums.txt'
 snapshot:

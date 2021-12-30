@@ -13,9 +13,9 @@ import (
 	sqstype "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/reactivex/rxgo/v2"
 
-	"github.com/mabels/s3-streaming-lister/config"
-	myq "github.com/mabels/s3-streaming-lister/my-queue"
-	"github.com/mabels/s3-streaming-lister/status"
+	"github.com/mabels/eimer-kette/config"
+	myq "github.com/mabels/eimer-kette/my-queue"
+	"github.com/mabels/eimer-kette/status"
 )
 
 type SqsOutWriter struct {
@@ -60,12 +60,12 @@ func (sow *SqsOutWriter) BufferJsonSize(receive rxgo.Observable, opts ...rxgo.Op
 				sow.app.Clients.Calls.Total.Inc("SqsDoNext")
 				event := events.S3EventRecord{
 					EventVersion: "V1",                                  // string              `json:"eventVersion"`
-					EventSource:  "s3-streaming-lister",                 //      string              `json:"eventSource"`
+					EventSource:  "eimer-kette",                 //      string              `json:"eventSource"`
 					AWSRegion:    *sow.app.Config.Output.Sqs.Aws.Region, //         string              `json:"awsRegion"`
 					EventTime:    time.Now(),                            //       time.Time           `json:"eventTime"`
 					EventName:    "ObjectCreated:Put",                   //         string              `json:"eventName"`
 					PrincipalID: events.S3UserIdentity{
-						PrincipalID: "s3-streaming-lister",
+						PrincipalID: "eimer-kette",
 					},
 					RequestParameters: events.S3RequestParameters{
 						SourceIPAddress: "8.8.8.8",

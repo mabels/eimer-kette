@@ -10,9 +10,9 @@ import (
 	"github.com/alitto/pond"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	config "github.com/mabels/s3-streaming-lister/config"
-	myq "github.com/mabels/s3-streaming-lister/my-queue"
-	"github.com/mabels/s3-streaming-lister/status"
+	config "github.com/mabels/eimer-kette/config"
+	myq "github.com/mabels/eimer-kette/my-queue"
+	"github.com/mabels/eimer-kette/status"
 )
 
 func getClient(app *config.S3StreamingLister) *s3.Client {

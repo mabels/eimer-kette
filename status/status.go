@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mabels/s3-streaming-lister/config"
-	myq "github.com/mabels/s3-streaming-lister/my-queue"
+	"github.com/mabels/eimer-kette/config"
+	myq "github.com/mabels/eimer-kette/my-queue"
 )
 
 type RunStatus struct {

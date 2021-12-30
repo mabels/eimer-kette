@@ -6,10 +6,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"github.com/mabels/s3-streaming-lister/config"
-	"github.com/mabels/s3-streaming-lister/frontend"
-	myq "github.com/mabels/s3-streaming-lister/my-queue"
-	"github.com/mabels/s3-streaming-lister/status"
+	"github.com/mabels/eimer-kette/config"
+	"github.com/mabels/eimer-kette/frontend"
+	myq "github.com/mabels/eimer-kette/my-queue"
+	"github.com/mabels/eimer-kette/status"
 )
 
 type OutWriter interface {

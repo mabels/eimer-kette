@@ -1,4 +1,4 @@
-module github.com/mabels/s3-streaming-lister
+module github.com/mabels/eimer-kette
 
 go 1.17
 

@@ -273,8 +273,8 @@ func versionStr(args *Config) string {
 func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 	rootCmd := &cobra.Command{
 		Use:     path.Base(osArgs[0]),
-		Short:   "s3-streaming-lister short help",
-		Long:    strings.TrimSpace("s3-streaming-lister long help"),
+		Short:   "eimer-kette short help",
+		Long:    strings.TrimSpace("eimer-kette long help"),
 		Version: versionStr(&app.Config),
 		// Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

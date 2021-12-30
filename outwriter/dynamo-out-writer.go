@@ -15,7 +15,7 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go/aws"
 
-	"github.com/mabels/s3-streaming-lister/config"
+	"github.com/mabels/eimer-kette/config"
 )
 
 type DynamoOutWriter struct {

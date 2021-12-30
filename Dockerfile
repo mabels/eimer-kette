@@ -11,6 +11,6 @@ RUN cd /build && make build
 
 FROM alpine:latest
 
-COPY --from=0 /build/dist/eimer-kette_linux_amd64/s3-streaming-listener /usr/local/bin/s3-streaming-lister
+COPY --from=0 /build/dist/eimer-kette_linux_amd64/eimer-kette /usr/local/bin/eimer-kette
 
-CMD ["/usr/local/bin/s3-streaming-lister"] 
+CMD ["/usr/local/bin/eimer-kette"] 
