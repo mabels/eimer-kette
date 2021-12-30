@@ -1,14 +1,16 @@
 FROM golang:1.16-alpine
 
-ARG VERSION
-ARG COMMIT
+RUN apk add make gcc git libc-dev
 
-RUN apk add make gcc libc-dev
+RUN wget https://github.com/goreleaser/goreleaser/releases/download/v1.2.3/goreleaser_Linux_x86_64.tar.gz \
+ && tar -C /usr/local/bin -xzvf goreleaser_Linux_x86_64.tar.gz goreleaser \
+ && rm goreleaser_Linux_x86_64.tar.gz
+
 COPY . /build
-RUN cd /build && make VERSION=$VERSION GITCOMMIT=$COMMIT
+RUN cd /build && make build
 
 FROM alpine:latest
 
-COPY --from=0 /build/s3-streaming-lister /usr/local/bin/s3-streaming-lister
+COPY --from=0 /build/dist/eimer-kette_linux_amd64/s3-streaming-listener /usr/local/bin/s3-streaming-lister
 
 CMD ["/usr/local/bin/s3-streaming-lister"] 
