@@ -37,20 +37,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: mabels/neckless@main
-        with:
-          version: v0.1.7
-
       - name: Building
-        env:
-          NECKLESS_PRIVKEY: ${{ secrets.NECKLESS_PRIVKEY }}
         run: |
-          export DOCKER_CONFIG=$HOME/.docker
-          eval $(neckless kv ls --ghAddMask  --shKeyValue AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY)
-          aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u mabels --password-stdin
           export VERSION=$(basename ${{ github.ref }})
-          docker build -t s3-streaming-lister:${{ github.sha }} .
-          docker tag s3-streaming-lister:${{ github.sha }} public.ecr.aws/d3g6c8d4/s3-streaming-lister:$VERSION
-          docker push public.ecr.aws/d3g6c8d4/s3-streaming-lister:$VERSION
-          docker tag s3-streaming-lister:${{ github.sha }} public.ecr.aws/d3g6c8d4/s3-streaming-lister:latest
-          docker push public.ecr.aws/d3g6c8d4/s3-streaming-lister:latest
+          docker build -t eimer-kette:${{ github.sha }} .
+          docker tag eimer-kette:${{ github.sha }} ghcr.io/mabels/eimer-kette:$VERSION
+          docker push ghcr.io/mabels/eimer-kette:$VERSION
+          docker tag eimer-kette:${{ github.sha }} ghcr.io/mabels/eimer-kette:latest
+          docker push ghcr.io/mabels/eimer-kette:latest
