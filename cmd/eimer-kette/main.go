@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/mabels/eimer-kette/config"
 	"github.com/mabels/eimer-kette/frontend"
 	myq "github.com/mabels/eimer-kette/my-queue"
@@ -18,7 +17,7 @@ func main() {
 	app := config.DefaultS3StreamingLister()
 	config.InitS3StreamingLister(app)
 	if *app.Config.Lambda.Start {
-		lambda.Start(AwsHandleRequest)
+		// lambda.Start(AwsHandleRequest)
 		return
 	}
 
