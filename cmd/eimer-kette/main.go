@@ -23,8 +23,16 @@ func main() {
 	}
 
 	chstatus := myq.MakeChannelQueue(*app.Config.Output.Sqs.Workers * *app.Config.S3Workers * 10)
+	statusStartedDone := make(chan bool)
+	go func() {
+		statusStartedDone <- true
+		status.StatusWorker(app, chstatus)
+		statusStartedDone <- true
+	}()
+	<-statusStartedDone
+
 	cho := ow.OutWriterProcessor(app, chstatus)
 	frontend.Frontend(app, cho, chstatus)
 
-	status.StatusWorker(app, chstatus)
+	<-statusStartedDone
 }
