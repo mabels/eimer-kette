@@ -89,7 +89,7 @@ dockers:
     # Valid options are: docker, buildx, podman.
     # podman is a GoReleaser Pro feature and is only available on Linux.
     # Defaults to docker.
-    use: docker
+    use: buildx
 
     # Template of the docker build flags.
     #build_flag_templates:
@@ -120,25 +120,24 @@ dockers:
 
   - use: buildx
     goos: linux
-    goarch: arm64
+    goarch: amd64
     image_templates:
-      - "mabels/{{ .ProjectName }}:{{ .Version }}-arm64v8"
-      - "mabels/{{ .ProjectName }}:latest-arm64v8"
+      - "mabels/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "mabels/{{ .ProjectName }}:latest-amd64"
     build_flag_templates:
-      - "--platform=linux/arm64/v8"
+      - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
   - use: buildx
     goos: linux
-    goarch: arm
-    goarm: 6
+    goarch: arm64
     image_templates:
-      - "mabels/{{ .ProjectName }}:{{ .Version }}-armv6"
-      - "mabels/{{ .ProjectName }}:latest-armv6"
+      - "mabels/{{ .ProjectName }}:{{ .Version }}-arm64v8"
+      - "mabels/{{ .ProjectName }}:latest-arm64v8"
     build_flag_templates:
-      - "--platform=linux/arm/v6"
+      - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -151,7 +150,7 @@ dockers:
       - "mabels/{{ .ProjectName }}:{{ .Version }}-armv7"
       - "mabels/{{ .ProjectName }}:latest-armv7"
     build_flag_templates:
-      - "--platform=linux/arm/v7"
+      - "--platform=linux/arm"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -173,6 +172,7 @@ docker_manifests:
   image_templates:
   - mabels/eimer-kette:{{ .Version }}-amd64
   - mabels/eimer-kette:{{ .Version }}-arm64v8
+  - mabels/eimer-kette:{{ .Version }}-armv7
 
   # Extra flags to be passed down to the manifest create command.
   # Defaults to empty.
