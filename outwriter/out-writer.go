@@ -21,18 +21,21 @@ type OutWriter interface {
 func OutWriterProcessor(app *config.S3StreamingLister, chstatus myq.MyQueue) myq.MyQueue {
 	cho := myq.MakeChannelQueue(*app.Config.MaxKeys)
 	var ow OutWriter
-	if *app.Config.Format == "sqs" {
+	switch *app.Config.Format {
+	case "sqs":
 		ow = makeSqsOutWriter(app, chstatus)
-	} else if *app.Config.Format == "mjson" {
+	case "mjson":
 		ow = makeMjsonOutWriter(app.Output.FileStream)
-	} else if *app.Config.Format == "awsls" {
+	case "awsls":
 		ow = makeAwsLsOutWriter(app.Output.FileStream)
-	} else if *app.Config.Format == "sqlite" {
+	case "sqlite":
 		ow = makeSqliteOutWriter(app, chstatus)
-	} else if *app.Config.Format == "dynamo" {
+	case "dynamo":
 		ow = makeDynamoOutWriter(app)
-	} else if *app.Config.Format == "s3delete" {
+	case "s3delete":
 		ow = makeS3DeleteOutWriter(app, chstatus)
+	case "parquet":
+		ow = makeParquetOutWriter(app, chstatus)
 	}
 	ow.setup()
 	go (func() {
