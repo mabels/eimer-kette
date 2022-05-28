@@ -8,7 +8,9 @@ import (
 )
 
 func Frontend(app *config.S3StreamingLister, cho myq.MyQueue, chstatus myq.MyQueue) {
-	if *app.Config.Frontend.Frontend == "sqlite" {
+	if *app.Config.Frontend.Frontend == "parquet" {
+		Parquet(app, cho, chstatus)
+	} else if *app.Config.Frontend.Frontend == "sqlite" {
 		Sqlite(app, cho, chstatus)
 	} else if *app.Config.Frontend.Frontend == "aws-s3" {
 		chi := S3ListerWorker(app, cho, chstatus)
