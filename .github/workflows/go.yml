@@ -30,19 +30,19 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  docker-build:
-    runs-on: ubuntu-latest
-    name: Create Docker 
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Building
-        run: |
-          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u mabels --password-stdin
-          export VERSION=$(basename ${{ github.ref }})
-          docker build -t eimer-kette:${{ github.sha }} .
-          docker tag eimer-kette:${{ github.sha }} ghcr.io/mabels/eimer-kette:$VERSION
-          docker push ghcr.io/mabels/eimer-kette:$VERSION
-          docker tag eimer-kette:${{ github.sha }} ghcr.io/mabels/eimer-kette:latest
-          docker push ghcr.io/mabels/eimer-kette:latest
+#  docker-build:
+#    runs-on: ubuntu-latest
+#    name: Create Docker 
+#    if: startsWith(github.ref, 'refs/tags/v')
+#    steps:
+#      - uses: actions/checkout@v2
+#
+#      - name: Building
+#        run: |
+#          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u mabels --password-stdin
+#          export VERSION=$(basename ${{ github.ref }})
+#          docker build -t eimer-kette:${{ github.sha }} .
+#          docker tag eimer-kette:${{ github.sha }} ghcr.io/mabels/eimer-kette:$VERSION
+#          docker push ghcr.io/mabels/eimer-kette:$VERSION
+#          docker tag eimer-kette:${{ github.sha }} ghcr.io/mabels/eimer-kette:latest
+#          docker push ghcr.io/mabels/eimer-kette:latest

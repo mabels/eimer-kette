@@ -16,10 +16,10 @@ import (
 )
 
 func Sqlite(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueue) {
-
 	db, err := sql.Open("sqlite3", *app.Config.Frontend.Sqlite.Filename)
 	if err != nil {
-		chStatus.Push(status.RunStatus{Err: &err})
+		chStatus.Push(status.RunStatus{Fatal: &err})
+		return
 	}
 	var tableName string
 	if *app.Config.Frontend.Sqlite.TableName != "" {
@@ -34,7 +34,7 @@ func Sqlite(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueue
 			// fmt.Fprintln(os.Stderr, "Producer:", producer)
 			rows, err := db.Query(fmt.Sprintf(*app.Config.Frontend.Sqlite.Query, tableName))
 			if err != nil {
-				chStatus.Push(status.RunStatus{Err: &err})
+				chStatus.Push(status.RunStatus{Fatal: &err})
 			}
 			defer rows.Close()
 			cnt := 0
@@ -84,5 +84,4 @@ func Sqlite(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueue
 		db.Close()
 		// fmt.Fprintln(os.Stderr, "obs-run-done")
 	}()
-
 }
