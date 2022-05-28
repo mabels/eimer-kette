@@ -122,8 +122,8 @@ dockers:
     goos: linux
     goarch: arm64
     image_templates:
-      - "0hlov3s/{{ .ProjectName }}:{{ .Version }}-arm64v8"
-      - "0hlov3s/{{ .ProjectName }}:latest-arm64v8"
+      - "mabels/{{ .ProjectName }}:{{ .Version }}-arm64v8"
+      - "mabels/{{ .ProjectName }}:latest-arm64v8"
     build_flag_templates:
       - "--platform=linux/arm64/v8"
       - "--label=org.opencontainers.image.created={{.Date}}"
@@ -135,8 +135,8 @@ dockers:
     goarch: arm
     goarm: 6
     image_templates:
-      - "0hlov3s/{{ .ProjectName }}:{{ .Version }}-armv6"
-      - "0hlov3s/{{ .ProjectName }}:latest-armv6"
+      - "mabels/{{ .ProjectName }}:{{ .Version }}-armv6"
+      - "mabels/{{ .ProjectName }}:latest-armv6"
     build_flag_templates:
       - "--platform=linux/arm/v6"
       - "--label=org.opencontainers.image.created={{.Date}}"
@@ -148,8 +148,8 @@ dockers:
     goarch: arm
     goarm: 7
     image_templates:
-      - "0hlov3s/{{ .ProjectName }}:{{ .Version }}-armv7"
-      - "0hlov3s/{{ .ProjectName }}:latest-armv7"
+      - "mabels/{{ .ProjectName }}:{{ .Version }}-armv7"
+      - "mabels/{{ .ProjectName }}:latest-armv7"
     build_flag_templates:
       - "--platform=linux/arm/v7"
       - "--label=org.opencontainers.image.created={{.Date}}"
