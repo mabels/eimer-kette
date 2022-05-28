@@ -4,10 +4,20 @@ before:
 builds:
   - env:
       - CGO_ENABLED=0
+    ldflags:
+      - "-s -w -X main.Version='{{.Version}}' -X main.GitCommit={{.Commit}}"
     goos:
       - linux
       - windows
       - darwin
+    goarch:
+      - arm
+      - amd64
+      - 386
+      - arm64
+    goarm:
+      - 6
+      - 7
     main: ./cmd/eimer-kette
     binary: eimer-kette
     tags:
@@ -30,3 +40,130 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
+
+
+dockers:
+  # You can have multiple Docker images.
+  -
+    # ID of the image, needed if you want to filter by it later on (e.g. on custom publishers).
+    id: eimer-kette
+
+    # GOOS of the built binaries/packages that should be used.
+    goos: linux
+
+#    goarch:
+#      - arm
+#      - amd64
+#      - 386
+#      - arm64
+#    goarm:
+#      - 6
+#      - 7
+
+    # IDs to filter the binaries/packages.
+    ids:
+    - eimer-kette
+
+    # Templates of the Docker image names.
+    image_templates:
+    - "mabels/eimer-kette:latest"
+    - "myuser/eimer-kette:{{ .Tag }}"
+    - "myuser/eimer-kette:{{ .Tag }}-{{ .Env.GO_VERSION }}"
+    - "myuser/eimer-kette:v{{ .Major }}"
+    - "gcr.io/mabels/eimer-kette:latest"
+
+    # Skips the docker push.
+    # Could be useful if you also do draft releases.
+    #
+    # If set to auto, the release will not be pushed to the Docker repository
+    #  in case there is an indicator of a prerelease in the tag, e.g. v1.0.0-rc1.
+    #
+    # Defaults to false.
+    skip_push: false
+
+    # Path to the Dockerfile (from the project root).
+    #
+    # Defaults to `Dockerfile`.
+    dockerfile: '{{ .Env.DOCKERFILE }}'
+
+    # Set the "backend" for the Docker pipe.
+    # Valid options are: docker, buildx, podman.
+    # podman is a GoReleaser Pro feature and is only available on Linux.
+    # Defaults to docker.
+    use: docker
+
+    # Template of the docker build flags.
+    #build_flag_templates:
+    #- "--pull"
+    #- "--label=org.opencontainers.image.created={{.Date}}"
+    #- "--label=org.opencontainers.image.title={{.ProjectName}}"
+    #- "--label=org.opencontainers.image.revision={{.FullCommit}}"
+    #- "--label=org.opencontainers.image.version={{.Version}}"
+    #- "--build-arg=FOO={{.Env.Bar}}"
+    #- "--platform=linux/arm64"
+
+    # Extra flags to be passed down to the push command.
+    # Defaults to empty.
+    #push_flags:
+    #- --tls-verify=false
+
+    # If your Dockerfile copies files other than binaries and packages,
+    # you should list them here as well.
+    # Note that GoReleaser will create the same structure inside a temporary
+    # folder, so if you add `foo/bar.json` here, on your Dockerfile you can
+    # `COPY foo/bar.json /whatever.json`.
+    # Also note that the paths here are relative to the folder in which
+    # GoReleaser is being run (usually the repository root folder).
+    # This field does not support wildcards, you can add an entire folder here
+    # and use wildcards when you `COPY`/`ADD` in your Dockerfile.
+    #extra_files:
+    #- config.yml
+
+
+# .goreleaser.yaml
+docker_manifests:
+  # You can have multiple Docker manifests.
+-
+  # ID of the manifest, needed if you want to filter by it later on (e.g. on custom publishers).
+  id: 
+
+  # Name template for the manifest.
+  # Defaults to empty.
+  name_template: mabels/eimer-kette:{{ .Version }}
+
+  # Image name templates to be added to this manifest.
+  # Defaults to empty.
+  image_templates:
+  - mabels/eimer-kette:{{ .Version }}-amd64
+  - mabels/eimer-kette:{{ .Version }}-arm64v8
+
+  # Extra flags to be passed down to the manifest create command.
+  # Defaults to empty.
+  #create_flags:
+  #- --insecure
+
+  # Extra flags to be passed down to the manifest push command.
+  # Defaults to empty.
+  #push_flags:
+  #- --insecure
+
+  # Skips the Docker manifest.
+  # If you set this to 'false' or 'auto' on your source Docker configs,
+  #  you'll probably want to do the same here.
+  #
+  # If set to 'auto', the manifest will not be created in case there is an
+  #  indicator of a prerelease in the tag, e.g. v1.0.0-rc1.
+  #
+  # Defaults to false.
+  skip_push: false
+
+  # Set the "backend" for the Docker manifest pipe.
+  # Valid options are: docker, podman
+  #
+  # Relevant notes:
+  # 1. podman is a GoReleaser Pro feature and is only available on Linux;
+  # 2. if you set podman here, the respective docker configs need to use podman too.
+  #
+  # Defaults to docker.
+  use: docker
+

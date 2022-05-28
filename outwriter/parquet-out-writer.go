@@ -3,6 +3,7 @@ package outwriter
 import (
 	"context"
 	"io"
+	"os"
 	"sync"
 	"time"
 
@@ -17,35 +18,35 @@ import (
 )
 
 func toEimerKetteItem(obj *types.Object) models.EimerKetteItem {
-	displayName := ""
-	id := ""
-	if obj.Owner != nil {
-		if obj.Owner.DisplayName != nil {
-			displayName = *obj.Owner.DisplayName
-		}
-		if obj.Owner.DisplayName != nil {
-			id = *obj.Owner.ID
-		}
-	}
+	// displayName := ""
+	// id := ""
+	// if obj.Owner != nil {
+	// 	if obj.Owner.DisplayName != nil {
+	// 		displayName = *obj.Owner.DisplayName
+	// 	}
+	// 	if obj.Owner.DisplayName != nil {
+	// 		id = *obj.Owner.ID
+	// 	}
+	// }
 	return models.EimerKetteItem{
 		ETag:         *obj.ETag,
 		Key:          *obj.Key,
 		LastModified: obj.LastModified.UnixMilli(),
-		Owner: models.EimerKetteOwner{
-			DisplayName: displayName,
-			ID:          id,
-		},
+		// Owner: models.EimerKetteOwner{
+		// 	DisplayName: displayName,
+		// 	ID:          id,
+		// },
 		Size:         obj.Size,
 		StorageClass: string(obj.StorageClass),
 	}
 }
 
 type ParquetOutWriter struct {
-	output io.Writer
-	// np       int64
+	output             io.Writer
+	outputClose        *os.File
 	pw                 *writer.ParquetWriter
 	chStatus           myq.MyQueue
-	waitComplete       sync.Mutex
+	waitStreamClosed   sync.Mutex
 	typesObjectChannel chan rxgo.Item
 	app                *config.S3StreamingLister
 }
@@ -65,29 +66,33 @@ func (ow *ParquetOutWriter) setup() OutWriter {
 	ow.pw.RowGroupSize = 1024 * 1024 //128M
 	ow.pw.CompressionType = parquet.CompressionCodec_SNAPPY
 
-	observable := rxgo.FromChannel(ow.typesObjectChannel).BufferWithCount(*ow.app.Config.Output.Parquet.ChunkSize).Map(
-		func(_ context.Context, items interface{}) (interface{}, error) {
-			started := time.Now()
-			for _, item := range items.([]interface{}) {
-				obj := item.(types.Object)
-				err := ow.pw.Write(toEimerKetteItem(&obj))
-				if err != nil {
-					ow.app.Clients.Calls.Error.Inc("parquet-write")
-					ow.chStatus.Push(status.RunStatus{Err: &err})
-					return nil, err
+	ow.waitStreamClosed.Lock()
+	observable := rxgo.FromChannel(ow.typesObjectChannel).
+		BufferWithCount(*ow.app.Config.Output.Parquet.ChunkSize).
+		Map(
+			func(_ context.Context, items interface{}) (interface{}, error) {
+				started := time.Now()
+				for _, item := range items.([]interface{}) {
+					obj := item.(types.Object)
+					ow.app.Clients.Calls.Total.Inc("parquet-write")
+					tek := toEimerKetteItem(&obj)
+					// fmt.Fprintf(os.Stderr, "tek:%v\n", tek)
+					err := ow.pw.Write(tek)
+					if err != nil {
+						ow.app.Clients.Calls.Error.Inc("parquet-write")
+						ow.chStatus.Push(status.RunStatus{Err: &err})
+						return nil, err
+					}
 				}
-			}
-			ow.app.Clients.Calls.Total.Duration("parquet-writes", started)
-			return nil, nil
-		},
-		rxgo.WithPool(*ow.app.Config.Output.Parquet.Workers),
-	)
+				ow.app.Clients.Calls.Total.Duration("parquet-writes", started)
+				return nil, nil
+			},
+			rxgo.WithPool(*ow.app.Config.Output.Parquet.Workers),
+		)
 	go func() {
-		// fmt.Fprintln(os.Stderr, "setup-runner-pre")
 		for range observable.Observe() {
 		}
-		// fmt.Fprintln(os.Stderr, "setup-runner-post")
-		ow.waitComplete.Unlock()
+		ow.waitStreamClosed.Unlock()
 	}()
 
 	return ow
@@ -100,25 +105,35 @@ func (ow *ParquetOutWriter) write(items *[]types.Object) {
 }
 
 func (ow *ParquetOutWriter) done() {
+	close(ow.typesObjectChannel)
+	ow.waitStreamClosed.Lock()
+	// fmt.Fprintln(os.Stderr, "done:parquet")
 	if err := ow.pw.WriteStop(); err != nil {
 		ow.chStatus.Push(status.RunStatus{Err: &err})
-		return
 	}
-	close(ow.typesObjectChannel)
-	ow.waitComplete.Lock()
-	ow.waitComplete.Unlock()
-	// log.Println("Write Finished")
-	// ow.output.Close()
+	if ow.outputClose != nil {
+		ow.outputClose.Close()
+	}
 }
 
 func makeParquetOutWriter(app *config.S3StreamingLister, chStatus myq.MyQueue) OutWriter {
+	fd := app.Output.FileStream
+	var outputClose *os.File
+	if *app.Config.Output.Parquet.FileName != "" {
+		var err error
+		outputClose, err = os.Create(*app.Config.Output.Parquet.FileName)
+		if err != nil {
+			chStatus.Push(status.RunStatus{Fatal: &err})
+		}
+		fd = outputClose
+	}
 	ret := &ParquetOutWriter{
-		output:             app.Output.FileStream,
+		output:             fd,
+		outputClose:        outputClose,
 		app:                app,
 		typesObjectChannel: make(chan rxgo.Item, *app.Config.Output.Parquet.Workers**app.Config.Output.Parquet.ChunkSize),
-		waitComplete:       sync.Mutex{},
+		waitStreamClosed:   sync.Mutex{},
 		chStatus:           chStatus,
 	}
-	ret.waitComplete.Lock()
 	return ret
 }

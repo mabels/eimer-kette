@@ -75,7 +75,6 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 			my := tx.Stmt(insertStmt)
 			for _, item := range items.([]interface{}) {
 				obj := item.(types.Object)
-				// fmt.Fprintf(os.Stderr, "%T %s %d", *obj.Key, obj.LastModified.String(), obj.Size)
 				_, err := my.Exec(*obj.Key, *obj.LastModified, obj.Size)
 				sow.app.Clients.Calls.Total.Inc("sqlite-insert")
 				if err != nil {
@@ -99,6 +98,7 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 		for range observable.Observe() {
 		}
 		sow.waitComplete.Unlock()
+		db.Close()
 	}()
 	return sow
 }
@@ -110,9 +110,9 @@ func (sow *SqlLiteOutWriter) write(items *[]types.Object) {
 }
 
 func (sow *SqlLiteOutWriter) done() {
-	sow.waitComplete.Lock()
 	close(sow.typesObjectChannel)
-	sow.waitComplete.Unlock()
+	sow.waitComplete.Lock()
+	// sow.waitComplete.Unlock()
 }
 
 func makeSqliteOutWriter(app *config.S3StreamingLister, chStatus myq.MyQueue) OutWriter {

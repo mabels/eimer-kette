@@ -44,8 +44,9 @@ type FrontendParams struct {
 }
 
 type ParquetFrontendParams struct {
-	Filename *string
-	Workers  *int
+	Filename  *string
+	Workers   *int
+	RowBuffer *int
 }
 
 type SqliteFrontendParams struct {
@@ -57,7 +58,7 @@ type SqliteFrontendParams struct {
 type ParquetParams struct {
 	Workers   *int
 	ChunkSize *int
-	// FileName  *string
+	FileName  *string
 }
 
 type OutputParams struct {
@@ -131,6 +132,7 @@ type Channels struct {
 
 type Output struct {
 	FileStream io.Writer
+	// FileName *string
 }
 
 type S3StreamingLister struct {
@@ -177,6 +179,8 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 	strategy := "delimiter"
 	progress := 5
 	sqlFilename := "./file.sql"
+	parquetWorkers := 4
+	parquetRowBuffer := 10000
 	parquetFilename := "./file.parquet"
 	// parquetFilename := "./files.parquet"
 	commitSize := 2000
@@ -204,8 +208,9 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 			Frontend: FrontendParams{
 				Frontend: &frontend,
 				Parquet: ParquetFrontendParams{
-					Filename: &parquetFilename,
-					Workers:  &sqlWorkers,
+					Filename:  &parquetFilename,
+					Workers:   &parquetWorkers,
+					RowBuffer: &parquetRowBuffer,
 				},
 				Sqlite: SqliteFrontendParams{
 					Filename:  &sqlFilename,
@@ -254,7 +259,7 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.Config.Prefixes = flags.StringArray("prefixes", *app.Config.Prefixes, "prefixs (safe characters are default, see https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html )")
 	app.Config.Prefix = flags.String("prefix", *app.Config.Prefix, "aws prefix")
 	app.Config.Delimiter = flags.String("delimiter", *app.Config.Delimiter, "aws delimiter")
-	app.Config.Format = flags.String("format", *app.Config.Format, "mjson | sqs | awsls")
+	app.Config.Format = flags.String("format", *app.Config.Format, "mjson | sqs | awsls | sqlite | dynamo | s3delete | parquet")
 
 	app.Config.Output.Sqs.Url = flags.String("outputSqsUrl", *app.Config.Output.Sqs.Url, "url")
 	app.Config.Output.Sqs.Delay = flags.Int32("outputSqsDelay", *app.Config.Output.Sqs.Delay, "delay")
@@ -273,7 +278,7 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 
 	app.Config.Output.Parquet.Workers = flags.Int("parquetWorkers", *app.Config.Output.Parquet.Workers, "writer workers")
 	app.Config.Output.Parquet.ChunkSize = flags.Int("parquetChunkSize", *app.Config.Output.Parquet.ChunkSize, "writer workers")
-	// app.Config.Output.Parquet.FileName = flags.String("parquetFilename", *app.Config.Output.Parquet.FileName, "sqlite filename")
+	app.Config.Output.Parquet.FileName = flags.String("parquetFilename", "", "parque output filename default stdout")
 
 	app.Config.Output.Sqlite.CleanDb = flags.Bool("sqliteCleanDb", *app.Config.Output.Sqlite.CleanDb, "set cleandb")
 	app.Config.Output.Sqlite.Workers = flags.Int("sqliteWorkers", *app.Config.Output.Sqlite.Workers, "writer workers")
@@ -284,13 +289,14 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.Config.Lambda.Start = flags.Bool("lambdaStart", *app.Config.Lambda.Start, "start lambda")
 	app.Config.Lambda.Deploy = flags.Bool("lambdaDeploy", *app.Config.Lambda.Deploy, "deploy the lambda")
 
-	app.Config.Frontend.Frontend = flags.String("frontend", *app.Config.Frontend.Frontend, "aws-s3 sqlite")
+	app.Config.Frontend.Frontend = flags.String("frontend", *app.Config.Frontend.Frontend, "aws-s3 | sqlite | parquet")
 
 	app.Config.Frontend.Sqlite.Filename = flags.String("frontendSqliteFilename", *app.Config.Frontend.Sqlite.Filename, "file.sql")
 	app.Config.Frontend.Sqlite.Query = flags.String("frontendSqliteQuery", *app.Config.Frontend.Sqlite.Query, "sql query")
 
 	app.Config.Frontend.Parquet.Filename = flags.String("frontendParquetFilename", *app.Config.Frontend.Parquet.Filename, "file.sql")
-	app.Config.Frontend.Parquet.Workers = flags.Int("frontendParquetWorkers", *app.Config.Frontend.Parquet.Workers, "sql query")
+	app.Config.Frontend.Parquet.Workers = flags.Int("frontendParquetWorkers", *app.Config.Frontend.Parquet.Workers, "parquet worker")
+	app.Config.Frontend.Parquet.RowBuffer = flags.Int("frontendParquetRowBuffer", *app.Config.Frontend.Parquet.RowBuffer, "parquet row buffer")
 
 	flagsAws("lambda", flags, &app.Config.Lambda.Aws)
 	flagsAws("listObject", flags, &app.Config.ListObject.Aws)

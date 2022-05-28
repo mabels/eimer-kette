@@ -1,9 +1,6 @@
 package outwriter
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"github.com/mabels/eimer-kette/config"
@@ -45,11 +42,12 @@ func OutWriterProcessor(app *config.S3StreamingLister, chstatus myq.MyQueue) myq
 			chstatus.Push(status.RunStatus{OutObjects: uint64(len(complete.Todo))})
 			todos += len(complete.Todo)
 			// fmt.Fprintln(os.Stderr, "ow.write:", todos)
+			app.Clients.Calls.Total.Add(len(complete.Todo), "out-writer-feed")
 			ow.write(&complete.Todo)
 			if complete.Completed {
-				fmt.Fprintln(os.Stderr, "outWriter-Complete-pre")
+				// fmt.Fprintln(os.Stderr, "outWriter-Complete-pre")
 				ow.done()
-				fmt.Fprintln(os.Stderr, "outWriter-Complete-post")
+				// fmt.Fprintln(os.Stderr, "outWriter-Complete-post")
 				chstatus.Push(status.RunStatus{OutObjects: 0, Completed: true})
 				cho.Stop()
 			}

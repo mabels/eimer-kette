@@ -16,6 +16,7 @@ type RunStatus struct {
 	Timed      bool
 	OutObjects uint64
 	Err        *error
+	Fatal      *error
 }
 
 func statString(calls ...*config.Calls) string {
@@ -68,11 +69,17 @@ func StatusWorker(app *config.S3StreamingLister, chstatus myq.MyQueue) {
 	took := time.Now()
 	// fmt.Fprintf(os.Stderr, "statusWriter:1")
 	chstatus.Wait(func(inItem interface{}) {
-		// fmt.Fprintf(os.Stderr, "statusWriter:2")
+		// fmt.Fprintf(os.Stderr, "statusWriter:0:%v\n", inItem)
 		item := inItem.(RunStatus)
 		if item.Err != nil {
+			// fmt.Fprintf(os.Stderr, "statusWriter:2\n")
 			fmt.Fprintln(os.Stderr, *item.Err)
 			return
+		}
+		if item.Fatal != nil {
+			// fmt.Fprintf(os.Stderr, "statusWriter:2\n")
+			fmt.Fprintln(os.Stderr, *item.Fatal)
+			*&item.Completed = true
 		}
 		total += item.OutObjects
 		/* || lastTotal/(*app.Config.StatsFragment) != total/(*app.Config.StatsFragment) */
