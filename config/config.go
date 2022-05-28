@@ -39,7 +39,13 @@ type Config struct {
 
 type FrontendParams struct {
 	Sqlite   SqliteFrontendParams
+	Parquet  ParquetFrontendParams
 	Frontend *string
+}
+
+type ParquetFrontendParams struct {
+	Filename *string
+	Workers  *int
 }
 
 type SqliteFrontendParams struct {
@@ -48,9 +54,16 @@ type SqliteFrontendParams struct {
 	TableName *string
 }
 
+type ParquetParams struct {
+	Workers   *int
+	ChunkSize *int
+	// FileName  *string
+}
+
 type OutputParams struct {
 	Sqs      SqsParams
 	Sqlite   SqliteParams
+	Parquet  ParquetParams
 	S3Delete S3DeleteParams
 	DynamoDb DynamoDbParams
 }
@@ -164,90 +177,41 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 	strategy := "delimiter"
 	progress := 5
 	sqlFilename := "./file.sql"
+	parquetFilename := "./file.parquet"
+	// parquetFilename := "./files.parquet"
 	commitSize := 2000
 	frontend := "aws-s3"
 	sqlQuery := "select key, mtime, size from %s"
 	app := S3StreamingLister{
 		Config: Config{
-			Version:   Version,
-			GitCommit: GitCommit,
-			Prefix:    &prefix,
-			Delimiter: &delimiter,
-			Strategy:  &strategy,
-			Prefixes:  &prefixes,
-			Format:    &mjson,
+			GitCommit:     GitCommit,
+			Version:       Version,
+			Strategy:      &strategy,
+			Prefixes:      &prefixes,
+			Prefix:        &prefix,
+			Delimiter:     &delimiter,
+			Format:        &mjson,
+			Bucket:        nil,
+			MaxKeys:       &maxKeys,
+			S3Workers:     &s3Workers,
+			StatsFragment: &statsFragment,
+			Help:          false,
+			VersionFlag:   false,
+			Progress:      &progress,
+			Output:        OutputParams{Sqlite: SqliteParams{CommitSize: &commitSize, Workers: &sqlWorkers, CleanDb: &falseVal, Filename: &sqlFilename, SqlTable: &sqlTables}, Parquet: ParquetParams{Workers: &sqlWorkers, ChunkSize: &commitSize}, Sqs: SqsParams{ChunkSize: &sqsChunkSize, Workers: &outputSqsWorkers, Delay: &outputSqsDelay, Url: &outputSqsUrl, MaxMessageSize: &outputSqsMaxMessageSize, Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}}, S3Delete: S3DeleteParams{Workers: &s3DeleteWorkers, ChunkSize: &s3DeleteChunkSize, Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}}, DynamoDb: DynamoDbParams{Workers: &s3DeleteWorkers, Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}}},
+			ListObject:    ListObjectParams{Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}},
+			Lambda:        LambdaParams{Deploy: &falseVal, Start: &falseVal, Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}},
 			Frontend: FrontendParams{
 				Frontend: &frontend,
+				Parquet: ParquetFrontendParams{
+					Filename: &parquetFilename,
+					Workers:  &sqlWorkers,
+				},
 				Sqlite: SqliteFrontendParams{
 					Filename:  &sqlFilename,
 					Query:     &sqlQuery,
 					TableName: &sqlTables,
-				},
-			},
-			Output: OutputParams{
-				Sqlite: SqliteParams{
-					CommitSize: &commitSize,
-					Workers:    &sqlWorkers,
-					CleanDb:    &falseVal,
-					Filename:   &sqlFilename,
-					SqlTable:   &sqlTables,
-				},
-				Sqs: SqsParams{
-					ChunkSize:      &sqsChunkSize,
-					Workers:        &outputSqsWorkers,
-					Delay:          &outputSqsDelay,
-					Url:            &outputSqsUrl,
-					MaxMessageSize: &outputSqsMaxMessageSize,
-					Aws: AwsParams{
-						KeyId:           &keyId,
-						SecretAccessKey: &secretAccessKey,
-						SessionToken:    &sessionToken,
-						Region:          &region,
-					},
-				},
-				S3Delete: S3DeleteParams{
-					Workers:   &s3DeleteWorkers,
-					ChunkSize: &s3DeleteChunkSize,
-					Aws: AwsParams{
-						KeyId:           &keyId,
-						SecretAccessKey: &secretAccessKey,
-						SessionToken:    &sessionToken,
-						Region:          &region,
-					},
-				},
-				DynamoDb: DynamoDbParams{
-					Workers: &s3DeleteWorkers,
-					Aws: AwsParams{
-						KeyId:           &keyId,
-						SecretAccessKey: &secretAccessKey,
-						SessionToken:    &sessionToken,
-						Region:          &region,
-					},
-				},
-			},
-			Lambda: LambdaParams{
-				Deploy: &falseVal,
-				Start:  &falseVal,
-				Aws: AwsParams{
-					KeyId:           &keyId,
-					SecretAccessKey: &secretAccessKey,
-					SessionToken:    &sessionToken,
-					Region:          &region,
-				},
-			},
-			Bucket:        nil,
-			S3Workers:     &s3Workers,
-			MaxKeys:       &maxKeys,
-			StatsFragment: &statsFragment,
-			Progress:      &progress,
-			ListObject: ListObjectParams{
-				Aws: AwsParams{
-					KeyId:           &keyId,
-					SecretAccessKey: &secretAccessKey,
-					SessionToken:    &sessionToken,
-					Region:          &region,
-				},
-			},
+				}},
 		},
 		InputConcurrent: 0,
 		Clients: Channels{
@@ -307,6 +271,10 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.Config.Progress = flags.Int("progress", *app.Config.Progress, "progress output every x seconds")
 	rootCmd.MarkFlagRequired("bucket")
 
+	app.Config.Output.Parquet.Workers = flags.Int("parquetWorkers", *app.Config.Output.Parquet.Workers, "writer workers")
+	app.Config.Output.Parquet.ChunkSize = flags.Int("parquetChunkSize", *app.Config.Output.Parquet.ChunkSize, "writer workers")
+	// app.Config.Output.Parquet.FileName = flags.String("parquetFilename", *app.Config.Output.Parquet.FileName, "sqlite filename")
+
 	app.Config.Output.Sqlite.CleanDb = flags.Bool("sqliteCleanDb", *app.Config.Output.Sqlite.CleanDb, "set cleandb")
 	app.Config.Output.Sqlite.Workers = flags.Int("sqliteWorkers", *app.Config.Output.Sqlite.Workers, "writer workers")
 	app.Config.Output.Sqlite.Filename = flags.String("sqliteFilename", *app.Config.Output.Sqlite.Filename, "sqlite filename")
@@ -320,6 +288,9 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 
 	app.Config.Frontend.Sqlite.Filename = flags.String("frontendSqliteFilename", *app.Config.Frontend.Sqlite.Filename, "file.sql")
 	app.Config.Frontend.Sqlite.Query = flags.String("frontendSqliteQuery", *app.Config.Frontend.Sqlite.Query, "sql query")
+
+	app.Config.Frontend.Parquet.Filename = flags.String("frontendParquetFilename", *app.Config.Frontend.Parquet.Filename, "file.sql")
+	app.Config.Frontend.Parquet.Workers = flags.Int("frontendParquetWorkers", *app.Config.Frontend.Parquet.Workers, "sql query")
 
 	flagsAws("lambda", flags, &app.Config.Lambda.Aws)
 	flagsAws("listObject", flags, &app.Config.ListObject.Aws)
