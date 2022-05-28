@@ -66,9 +66,9 @@ dockers:
     # Templates of the Docker image names.
     image_templates:
     - "mabels/eimer-kette:latest"
-    - "myuser/eimer-kette:{{ .Tag }}"
-    - "myuser/eimer-kette:{{ .Tag }}-{{ .Env.GO_VERSION }}"
-    - "myuser/eimer-kette:v{{ .Major }}"
+    - "mabels/eimer-kette:{{ .Tag }}"
+    - "mabels/eimer-kette:{{ .Tag }}-{{ .Env.GO_VERSION }}"
+    - "mabels/eimer-kette:v{{ .Major }}"
     - "gcr.io/mabels/eimer-kette:latest"
 
     # Skips the docker push.
