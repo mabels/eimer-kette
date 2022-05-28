@@ -1,6 +1,6 @@
 FROM ubuntu:latest
 
-RUN find .
+RUN find . -print
 
 COPY ./eimer-kette-linux /usr/local/bin/eimer-kette
 
