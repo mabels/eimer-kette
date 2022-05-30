@@ -102,7 +102,7 @@ func (self *HandlerCtx) writeSingleFiles(cmd *CreateTestCmd) {
 	for i := 0; i < int(cmd.Payload.NumberOfFiles); i++ {
 		<-wrf.doneChan
 	}
-	q.Stop()
+	//q.Stop()
 	out, _ := json.Marshal(&CreateFiles{
 		Command: "CreateFiles",
 		Payload: int(cmd.Payload.NumberOfFiles),
