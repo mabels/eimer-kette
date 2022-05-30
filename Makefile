@@ -5,4 +5,5 @@ build:
 
 test:
 	go test github.com/mabels/eimer-kette/my-queue
+	go test github.com/mabels/eimer-kette/timed-worker
 
