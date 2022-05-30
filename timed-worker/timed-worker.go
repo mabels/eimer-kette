@@ -2,92 +2,70 @@ package timedworker
 
 import (
 	"fmt"
+	"os"
+	"reflect"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/opentracing/opentracing-go/log"
 )
 
-type WorkerCommand struct {
-	Command     string
-	WorkerId    string
-	Transaction string
-	Data        interface{}
-	Error       error
+type Result struct {
+	Event  *Transaction
+	Worker *Worker
 }
-type Worker struct {
-	ToWorker   chan WorkerCommand
-	FromWorker chan WorkerCommand
-	Id         string
-	State      string
-	Stop       bool
-}
-
-type CommandFn struct {
-	Fn  func(ctx interface{}, job interface{})
-	Ctx interface{}
+type WorkerProtocol struct {
+	Worker               int
+	TimeToStop           time.Duration
+	FromWorkers          chan WorkerCommand
+	FromWorkersProcessed int
+	FromWorkersState     string
+	FromWorkersStopped   sync.Mutex
+	Workers              []*Worker
+	FreeWorkers          chan *Worker
+	Transactions         *TransactionProtocol
+	WaitingCommands      int
+	Actions              Actions
 }
 
-type Actions map[string]func(twrk *TimedWorker, cmd WorkerCommand, wrk *Worker) WorkerCommand
-
-func (act *Actions) Register(name string, fn func(twrk *TimedWorker, cmd WorkerCommand, wrk *Worker) WorkerCommand) {
-	(*act)[name] = fn
-}
-
-type TimedWorker struct {
-	Worker             int
-	TimeToStop         time.Duration
-	FromWorkers        chan WorkerCommand
-	FromWorkersState   string
-	FromWorkersStopped sync.Mutex
-	Workers            []*Worker
-	FreeWorkers        chan *Worker
-	Transactions       *CommandEvents
-	WaitingCommands    int
-	Actions            Actions
-}
-
-func NewTimedWorker(worker *TimedWorker) *TimedWorker {
-	return &TimedWorker{
+func NewWorkerProtocol(worker *WorkerProtocol) *WorkerProtocol {
+	return &WorkerProtocol{
 		Worker:      worker.Worker,
 		TimeToStop:  worker.TimeToStop,
 		FromWorkers: make(chan WorkerCommand, worker.Worker),
 		// FromWorkerCommands: make(map[string]CommandFnArray),
 		FreeWorkers:     make(chan *Worker, worker.Worker),
 		WaitingCommands: 10,
-		Transactions:    NewCommandEvents(10),
+		Transactions:    NewTransactionProtocol(10),
 		Actions:         make(Actions),
 	}
 }
 
-/*
-func (wrk *TimedWorker) AddWaitFromWorker(expectedCmd string, fn func()) {
-		done := sync.Mutex{}
-		done.Lock()
-		waitStarted := sync.Mutex{}
-		waitStarted.Lock()
-		completedWorker := map[string]WorkerCommand{}
-		go func() {
-			waitStarted.Unlock()
-			var err error
-			for err == nil && len(completedWorker) != len(wrk.Workers) {
-				command := <-wrk.FromWorkers
-				fmt.Fprintf(os.Stderr, "Command:%v:%d\n", command, len(completedWorker))
-				if command.Command != expectedCmd {
-					err = fmt.Errorf("not expectedCmd:%v -> %v", expectedCmd, command)
-					break
-				}
-				completedWorker[command.WorkerId] = command
-			}
-			fmt.Fprintf(os.Stderr, "WaitCommandCommpleted:%s:%d\n", expectedCmd, len(completedWorker))
-			done.Unlock()
-		}()
-		waitStarted.Lock()
-		return &done, &completedWorker
+func (wrk *WorkerProtocol) sendError(cmd *WorkerCommand, cmdErr error) {
+	// fmt.Fprintf(os.Stderr, "-1-sendError:%v\n", cmd)
+	cerrs, err := wrk.Transactions.Find("SystemError")
+	// fmt.Fprintf(os.Stderr, "-2-sendError:%v\n", cmd)
+	if err != nil {
+		log.Error(fmt.Errorf("transaction find error:%v", err))
+		// fmt.Fprintf(os.Stderr, "-2.1-sendError:%v\n", cmd)
+		return
+	}
+	for _, cerr := range cerrs {
+		// fmt.Fprintf(os.Stderr, "-3-sendError:%v\n", cmd)
+		fmt.Fprintf(os.Stderr, "-3.1-sendError:%v:%v:%v\n", cmd, reflect.ValueOf(cerr.ResolvFn), cerr)
+		cerr.ResolvFn(cerr, WorkerCommand{
+			Command:     "error",
+			WorkerId:    cmd.WorkerId,
+			Transaction: cmd.Transaction,
+			Data:        cmd,
+			Error:       cmdErr,
+		})
+		fmt.Fprintf(os.Stderr, "-3.2-sendError:%v:%v:%v\n", cmd, reflect.ValueOf(cerr.ResolvFn), cerr)
+	}
 }
-*/
 
-func (wrk *TimedWorker) startFromChannel() error {
+func (wrk *WorkerProtocol) startFromChannel() error {
 	if wrk.FromWorkersState == "Running" {
 		return fmt.Errorf("Already running")
 	}
@@ -99,28 +77,28 @@ func (wrk *TimedWorker) startFromChannel() error {
 		wrk.FromWorkersState = "Running"
 		started.Unlock()
 		for cmd := range wrk.FromWorkers {
+			wrk.FromWorkersProcessed++
 			// fmt.Fprintf(os.Stderr, "FromWorkers:%v\n", cmd)
 			if cmd.Command == "stopFromChannel" {
 				break
 			}
-			ce, err := wrk.Transactions.Find(cmd.Command, cmd.Command)
-			if err != nil {
-				// this is a problem
-				continue
-			}
-			if ce == nil {
-				continue
-			}
-			// fmt.Fprintf(os.Stderr, "ResolvFn:%v\n", cmd)
-			ce.ResolvFn(cmd)
+			ces, err := wrk.Transactions.Find(cmd.Transaction)
+			for _, ce := range ces {
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Pre-FromWorkers:Err:%v:%v\n", cmd, err)
+					wrk.sendError(&cmd, err)
+					fmt.Fprintf(os.Stderr, "Pos-FromWorkers:Err:%v:%v\n", cmd, err)
+					continue
+				}
+				if ce == nil {
+					fmt.Fprintf(os.Stderr, "Pre-FromWorkers:Ce:%v:%v\n", cmd, err)
+					wrk.sendError(&cmd, fmt.Errorf("Unknown Transaction:%v", cmd.Transaction))
+					fmt.Fprintf(os.Stderr, "Pos-FromWorkers:Ce:%v:%v\n", cmd, err)
+					continue
+				}
 
-			// cmds, ok := wrk.FromWorkerCommands[cmd.Command]
-			// if !ok {
-			// 	continue
-			// }
-			// for _, ctx := range cmds.Active() {
-			// 	ctx.Fn(ctx.Ctx, cmd)
-			// }
+				ce.ResolvFn(ce, cmd)
+			}
 		}
 		wrk.FromWorkersState = "Stopped"
 		wrk.FromWorkersStopped.Unlock()
@@ -129,30 +107,30 @@ func (wrk *TimedWorker) startFromChannel() error {
 	return nil
 }
 
-func (wrk *TimedWorker) doSimple() (*sync.Mutex, *map[string]WorkerCommand, func(cmd WorkerCommand)) {
+func (wrk *WorkerProtocol) collectFromAllWorker() (*sync.Mutex, *map[string]WorkerCommand, func(ce *Transaction, cmd WorkerCommand)) {
 	done := sync.Mutex{}
 	done.Lock()
 	gotStarted := map[string]WorkerCommand{}
-	return &done, &gotStarted, func(wc WorkerCommand) {
+	return &done, &gotStarted, func(ce *Transaction, wc WorkerCommand) {
 		// fmt.Fprintf(os.Stderr, "doSimple:%v\n", wc)
 		gotStarted[wc.WorkerId] = wc
 		if len(gotStarted) == wrk.Worker {
-			// fmt.Fprintf(os.Stderr, "doSimple:unlock:%v\n", job)
+			// fmt.Fprintf(os.Stderr, "doSimple:unlock:%v\n", wc)
 			done.Unlock()
 		}
 	}
 }
 
-func (wrk *TimedWorker) Setup() error {
+func (wrk *WorkerProtocol) Setup() error {
 	wrk.Workers = make([]*Worker, wrk.Worker)
 	var err error
-	wrk.Actions.Register("ping", func(twrk *TimedWorker, cmd WorkerCommand, wrk *Worker) WorkerCommand {
+	wrk.Actions.Register("ping", func(twrk *WorkerProtocol, cmd WorkerCommand, wrk *Worker) WorkerCommand {
 		// twrk.FromWorkers <- WorkerCommand{Command: "pong", WorkerId: wrk.Id, Transaction: cmd.Transaction, Data: cmd.Data}
 		res := cmd
 		res.Command = "pong"
 		return res
 	})
-	wrk.Actions.Register("stop", func(twrk *TimedWorker, cmd WorkerCommand, wrk *Worker) WorkerCommand {
+	wrk.Actions.Register("stop", func(twrk *WorkerProtocol, cmd WorkerCommand, wrk *Worker) WorkerCommand {
 		// fmt.Fprintf(os.Stderr, "stop:%v\n", wrk.Id)
 		wrk.Stop = true
 		res := cmd
@@ -160,7 +138,8 @@ func (wrk *TimedWorker) Setup() error {
 		return res
 	})
 	wrk.startFromChannel()
-	done, _, fn := wrk.doSimple()
+	// fmt.Fprintf(os.Stderr, "startFromChannel\n")
+	done, _, fn := wrk.collectFromAllWorker()
 	for w := 0; w < wrk.Worker; w++ {
 		wrk.Workers[w] = &Worker{
 			Id:         uuid.New().String(),
@@ -168,29 +147,44 @@ func (wrk *TimedWorker) Setup() error {
 			FromWorker: wrk.FromWorkers,
 		}
 		wrk.FreeWorkers <- wrk.Workers[w]
-		_, err := wrk.Dispatch("started", fn, wrk.Workers[w].Id)
+		rs, err := wrk.Dispatch("started", func(ce *Transaction, cmd WorkerCommand) {
+			ce.Clean()
+			fn(ce, cmd)
+
+		})
+		// fmt.Fprintf(os.Stderr, "Dispatch:started:%v\n", rs.Event.transaction)
 		if err != nil {
 			return err
 		}
 		// Real Worker
 		go func(w *Worker) {
-			w.FromWorker <- WorkerCommand{Command: "started", Data: w.Id, WorkerId: w.Id, Transaction: w.Id}
+			w.FromWorker <- WorkerCommand{Command: "started", Data: w.Id, WorkerId: w.Id, Transaction: rs.Event.transaction}
 			w.Stop = false
 			for !w.Stop {
 				select {
 				case cmd := <-w.ToWorker:
 					action, ok := wrk.Actions[cmd.Command]
 					if !ok {
-						w.FromWorker <- WorkerCommand{Command: "error", Error: fmt.Errorf("Unknown command:%v", cmd), WorkerId: w.Id, Transaction: cmd.Transaction}
-						break
+						w.FromWorker <- WorkerCommand{
+							Command:     "error",
+							Error:       fmt.Errorf("Unknown command:%v", cmd),
+							WorkerId:    w.Id,
+							Data:        cmd,
+							Transaction: cmd.Transaction,
+						}
+					} else {
+						// fmt.Fprintf(os.Stderr, "Action:%v:%v\n", w.Id, cmd.Command)
+						res := action(wrk, cmd, w)
+						if res.Command == "" {
+							continue
+						}
+						if res.Transaction == "" {
+							res.Transaction = cmd.Transaction
+						}
+						res.WorkerId = w.Id
+						w.FromWorker <- res
 					}
-					// fmt.Fprintf(os.Stderr, "Action:%v:%v\n", w.Id, cmd.Command)
-					res := action(wrk, cmd, w)
-					if res.Transaction == "" {
-						res.Transaction = cmd.Transaction
-					}
-					res.WorkerId = w.Id
-					w.FromWorker <- res
+					wrk.FreeWorkers <- w
 				}
 			}
 			// fmt.Fprintf(os.Stderr, "Worker:%v:stopped\n", w.Id)
@@ -201,14 +195,14 @@ func (wrk *TimedWorker) Setup() error {
 	return err
 }
 
-func (wrk *TimedWorker) Shutdown() error {
-	done, _, fn := wrk.doSimple()
+func (wrk *WorkerProtocol) Shutdown() error {
+	done, _, fn := wrk.collectFromAllWorker()
 	for _, w := range wrk.Workers {
-		_, err := wrk.Dispatch("stopped", fn, w.Id)
+		rs, err := wrk.Dispatch("stopped", fn)
 		if err != nil {
 			return err
 		}
-		w.ToWorker <- WorkerCommand{Command: "stop", WorkerId: w.Id, Transaction: w.Id}
+		w.ToWorker <- WorkerCommand{Command: "stop", WorkerId: w.Id, Transaction: rs.Event.transaction}
 	}
 	done.Lock()
 	wrk.FromWorkers <- WorkerCommand{Command: "stopFromChannel"}
@@ -217,7 +211,7 @@ func (wrk *TimedWorker) Shutdown() error {
 	return nil
 }
 
-func (wrk *TimedWorker) Ping(o_ofs ...int) (*map[string]WorkerCommand, error) {
+func (wrk *WorkerProtocol) Ping(o_ofs ...int) (*map[string]WorkerCommand, error) {
 	var ofs int
 	if len(o_ofs) == 0 {
 		ofs = 0
@@ -227,36 +221,29 @@ func (wrk *TimedWorker) Ping(o_ofs ...int) (*map[string]WorkerCommand, error) {
 	done := sync.Mutex{}
 	done.Lock()
 	pongs := map[string]WorkerCommand{}
-	for i, w := range wrk.Workers {
-		res, err := wrk.Dispatch("pong", func(cmd WorkerCommand) {
-			pongs[cmd.WorkerId] = cmd
-			if len(pongs) == wrk.Worker {
-				done.Unlock()
-			}
+	for _, w := range wrk.Workers {
+		// fmt.Fprintf(os.Stderr, "Ping:Invoke:%v\n", w.Id)
+		_, err := wrk.Invoke(InvokeParams{
+			Command:  "ping",
+			InParams: ofs,
+			ResolvFn: func(ce *Transaction, cmd WorkerCommand) {
+				// fmt.Fprintf(os.Stderr, "ResolvFn:%v\n", cmd)
+				pongs[cmd.WorkerId] = cmd
+				if len(pongs) == wrk.Worker {
+					done.Unlock()
+				}
+			},
+			Worker: w,
 		})
 		if err != nil {
 			return nil, err
 		}
-		w.ToWorker <- WorkerCommand{Command: "ping", Transaction: res.Event.transaction, Data: fmt.Sprintf("%d", ofs+i)}
 	}
 	done.Lock()
 	return &pongs, nil
 }
 
-// func (wrk *TimedWorker) AddWaitFromWorker(cmd string, fn func(ctx interface{}, job interface{}), ctx interface{}) error {
-// 	wrk.FromWorkerCommandsLock.Lock()
-// 	command, ok := wrk.FromWorkerCommands[cmd]
-// 	if !ok {
-// 		// command = New
-// 		// make(chan CommandFn, wrk.Worker)
-// 		wrk.FromWorkerCommands[cmd] = command
-// 	}
-// 	// wrk.FromWorkerCommands[cmd] = append(wrk.FromWorkerCommands[cmd], CommandFn{Fn: fn, Ctx: ctx})
-// 	wrk.FromWorkerCommandsLock.Unlock()
-// 	return nil
-// }
-
-func (wrk *TimedWorker) Start() error {
+func (wrk *WorkerProtocol) Start() error {
 	res, err := wrk.Ping()
 	if err != nil {
 		return err
@@ -264,55 +251,84 @@ func (wrk *TimedWorker) Start() error {
 	if len(*res) != wrk.Worker {
 		return fmt.Errorf("not all workers available")
 	}
-	// wrk.FreeMutex = sync.Mutex{}
-	// wrk.FreeRing = 0
-	// wrk.FreeWorkers = make([]*Worker, wrk.Worker)
-	// for i, w := range wrk.Workers {
-	// 	wrk.FreeWorkers[i] = w
-	// }
-
 	return nil
 }
 
-type CustomCommand struct {
-	Command string
-	Job     interface{}
+type InvokeParams struct {
+	Transaction *string
+	Command     string
+	InParams    interface{}
+	ResolvFn    func(ce *Transaction, cmd WorkerCommand)
+	Worker      *Worker
 }
 
-type Result struct {
-	Event  *CommandEvent
-	Worker *Worker
-	// Waiting chan WorkerCommand
-}
-
-// func (result *Result) Wait() (WorkerCommand, error) {
-// 	wc := <-result.Waiting
-// 	return wc, nil
-// }
-
-func (wrk *TimedWorker) Invoke(icmd string, params interface{}, rcmd string, fn func(cmd WorkerCommand), optional_transaction ...string) (*Result, error) {
-	var transaction string
-	if len(optional_transaction) > 0 {
-		transaction = optional_transaction[0]
-	} else {
-		transaction = uuid.NewString()
+func (wrk *WorkerProtocol) Invoke(ip InvokeParams) (*Result, error) {
+	if ip.Transaction == nil {
+		my := uuid.New().String()
+		ip.Transaction = &my
 	}
-	res, err := wrk.Dispatch(rcmd, fn, transaction)
+	// fmt.Fprintf(os.Stderr, "-1-Invoke:ToWorker:%v:%v:%v\n", icmd, params, transaction)
+	res, err := wrk.Dispatch(*ip.Transaction, func(ce *Transaction, cmd WorkerCommand) {
+		err := ce.Clean()
+		// fmt.Fprintf(os.Stderr, "Invoke:Dispatch:%v:%v:%v\n", cmd.Command, cmd.Data, err)
+		if err != nil {
+			out := cmd
+			out.Command = "error"
+			out.Data = cmd
+			out.Error = err
+			ip.ResolvFn(ce, out)
+		} else {
+			ip.ResolvFn(ce, cmd)
+		}
+	})
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "-2.1-Invoke:ToWorker:%v\n", err)
 		return nil, err
 	}
-	res.Worker.ToWorker <- WorkerCommand{Command: icmd, Data: params, Transaction: res.Event.transaction}
+	if ip.Worker == nil {
+		select {
+		case x := <-wrk.FreeWorkers:
+			res.Worker = x
+		default:
+			return nil, fmt.Errorf("no free workers")
+		}
+	} else {
+		found := false
+		for !found {
+			out := make([]*Worker, 0, len(wrk.Workers))
+			abort := false
+			for i := 0; !abort && i < len(wrk.Workers); i++ {
+				select {
+				case x := <-wrk.FreeWorkers:
+					if ip.Worker != x {
+						out = append(out, x)
+					} else {
+						found = true
+						res.Worker = x
+					}
+				default:
+					abort = true
+					break
+				}
+			}
+			for _, w := range out {
+				wrk.FreeWorkers <- w
+			}
+			if !found {
+				// really ugly busy waiting
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+
+	}
+	// fmt.Fprintf(os.Stderr, "-3-Invoke:ToWorker:%v\n", ip)
+	res.Worker.ToWorker <- WorkerCommand{Command: ip.Command, Data: ip.InParams,
+		Transaction: res.Event.transaction}
+	// fmt.Fprintf(os.Stderr, "-4-Invoke:ToWorker:%v\n", ip)
 	return res, nil
 }
 
-func (wrk *TimedWorker) Dispatch(cmd string, runOnReceive func(cmd WorkerCommand), optional_transaction ...string) (*Result, error) {
-	var freeWorker *Worker
-	select {
-	case x := <-wrk.FreeWorkers:
-		freeWorker = x
-	default:
-		return nil, fmt.Errorf("no free workers")
-	}
+func (wrk *WorkerProtocol) Dispatch(cmd string, runOnReceive func(ce *Transaction, cmd WorkerCommand), optional_transaction ...string) (*Result, error) {
 
 	var transaction string
 	if len(optional_transaction) > 0 {
@@ -320,41 +336,21 @@ func (wrk *TimedWorker) Dispatch(cmd string, runOnReceive func(cmd WorkerCommand
 	} else {
 		transaction = uuid.NewString()
 	}
-	res := Result{
-		Worker: freeWorker,
-		// Waiting: make(chan WorkerCommand, wrk.WaitingCommands),
-	}
-	ce, err := wrk.Transactions.Add(cmd, transaction, func(receivedCmd interface{}) {
-		// fmt.Fprintf(os.Stderr, "received %s\n", receivedCmd)
-		// if runOnReceive != nil {
-		runOnReceive(receivedCmd.(WorkerCommand))
-		// } else {
-		// 	res.Waiting <- receivedCmd.(WorkerCommand)
-		// }
-		wrk.FreeWorkers <- freeWorker
+	// res := Result{
+	// 	Worker: freeWorker,
+	// }
+	ce, err := wrk.Transactions.Add(transaction, func(ce *Transaction, ctx interface{}) {
+		// fmt.Fprintf(os.Stderr, "-1-Transaction-Dispatch:FN:%v\n", ctx)
+		// fmt.Fprintf(os.Stderr, "-2-Transaction-Dispatch:FN:%v\n", ctx)
+		runOnReceive(ce, ctx.(WorkerCommand))
+		// fmt.Fprintf(os.Stderr, "-3-Transaction-Dispatch:FN:%v\n", ctx)
 	})
 	if err != nil {
 		return nil, err
 	}
-	res.Event = ce
+	// res.Event = ce
 	// fmt.Fprintf(os.Stderr, "Dispatch:%s:%s\n", cmd, transaction)
-	return &res, nil
-	// var runnable *Worker
-	// wrk.FreeMutex.Lock()
-	// i := wrk.FreeRing
-	// for c := 0; c < wrk.Worker; c++ {
-	// 	runnable = wrk.FreeWorkers[i]
-	// 	if runnable != nil {
-	// 		wrk.FreeWorkers[i] = nil
-	// 		break
-	// 	}
-	// 	i = (i + 1) % wrk.Worker
-	// }
-	// wrk.FreeRing = (wrk.FreeRing + 1) % wrk.Worker
-	// wrk.FreeMutex.Unlock()
-	// runnable.ToWorker <- WorkerCommand{Command: "StartCmd", Data: CustomCommand{
-	// 	Command: cmd,
-	// 	Job:     job,
-	// }, WorkerId: runnable.Id}
-	// return nil
+	return &Result{
+		Event: ce,
+	}, nil
 }

@@ -2,14 +2,14 @@ package timedworker
 
 import (
 	"fmt"
-	"strconv"
+	"os"
 	"sync"
 	"testing"
 	"time"
 )
 
 func TestSetupWorker(t *testing.T) {
-	worker := NewTimedWorker(&TimedWorker{
+	worker := NewWorkerProtocol(&WorkerProtocol{
 		Worker:     4,
 		TimeToStop: time.Duration(2 * time.Second),
 	})
@@ -28,6 +28,20 @@ func TestSetupWorker(t *testing.T) {
 			t.Errorf("worker %d has no id", w)
 		}
 	}
+
+	if len(worker.Workers) != worker.Worker {
+		t.Errorf("worker count should be 4, but is %d", len(worker.Workers))
+	}
+
+	if len(worker.Transactions.transactions) != 0 {
+		t.Errorf("transaction count should be 0, but is %d", len(worker.Transactions.transactions))
+		for ts, tss := range worker.Transactions.transactions {
+			for _, ta := range tss {
+				t.Errorf("transaction: %v:%v", ts, *ta)
+			}
+		}
+	}
+
 	err = worker.Shutdown()
 	if err != nil {
 		t.Error("worker shutdown error: ", err)
@@ -38,7 +52,7 @@ func TestSetupWorker(t *testing.T) {
 }
 
 func TestPingWorkers(t *testing.T) {
-	worker := NewTimedWorker(&TimedWorker{
+	worker := NewWorkerProtocol(&WorkerProtocol{
 		Worker:     4,
 		TimeToStop: time.Duration(2 * time.Second),
 	})
@@ -51,6 +65,7 @@ func TestPingWorkers(t *testing.T) {
 	result1, err := worker.Ping()
 	if err != nil {
 		t.Errorf("Ping should not fail: %v", err)
+		return
 	}
 	if len(*result1) != worker.Worker {
 		t.Errorf("ping result count should be %d, but is %d", worker.Worker, len(*result1))
@@ -58,6 +73,7 @@ func TestPingWorkers(t *testing.T) {
 	result2, err := worker.Ping(4)
 	if err != nil {
 		t.Errorf("Ping should not fail: %v", err)
+		return
 	}
 	if len(*result2) != worker.Worker {
 		t.Errorf("ping result count should be %d, but is %d", worker.Worker, len(*result2))
@@ -68,16 +84,19 @@ func TestPingWorkers(t *testing.T) {
 			t.Errorf("ping result2 %s not found", k1)
 		}
 		// fmt.Fprintf(os.Stderr, "v1str:%v, v2str:%v\n", v1str, v2str)
-		v1, _ := strconv.Atoi(v1str.Data.(string))
-		v2, _ := strconv.Atoi(v2str.Data.(string))
+		v1, _ := v1str.Data.(int)
+		v2, _ := v2str.Data.(int)
 		if v1+4 != v2 {
 			t.Errorf("ping result not sequential:%v:%v", v1str, v2str)
 		}
 	}
+	if len(worker.Transactions.transactions) != 0 {
+		t.Errorf("transaction count should be 0, but is %d", len(worker.Transactions.transactions))
+	}
 }
 
 func TestDispatchSimple(t *testing.T) {
-	worker := NewTimedWorker(&TimedWorker{
+	worker := NewWorkerProtocol(&WorkerProtocol{
 		Worker:     4,
 		TimeToStop: time.Duration(2 * time.Second),
 	})
@@ -87,7 +106,7 @@ func TestDispatchSimple(t *testing.T) {
 	}
 	defer worker.Shutdown()
 	{
-		fn := func(cmd WorkerCommand) {
+		fn := func(ce *Transaction, cmd WorkerCommand) {
 		}
 		res, err := worker.Dispatch("test", fn, "TestDispatch")
 		if err != nil {
@@ -101,7 +120,7 @@ func TestDispatchSimple(t *testing.T) {
 		}
 	}
 	{
-		fn := func(cmd WorkerCommand) {
+		fn := func(ce *Transaction, cmd WorkerCommand) {
 		}
 		res, err := worker.Dispatch("test", fn)
 		if err != nil {
@@ -116,12 +135,8 @@ func TestDispatchSimple(t *testing.T) {
 	}
 }
 
-type Job struct {
-	Id string
-}
-
 func TestDispatchBlock(t *testing.T) {
-	worker := NewTimedWorker(&TimedWorker{
+	worker := NewWorkerProtocol(&WorkerProtocol{
 		Worker:     4,
 		TimeToStop: time.Duration(2 * time.Second),
 	})
@@ -131,9 +146,8 @@ func TestDispatchBlock(t *testing.T) {
 	}
 	defer worker.Shutdown()
 
-	fn := func(ctx WorkerCommand) {
-		// res := ctx.(*Result)
-		// res.Event.Clean()
+	fn := func(ce *Transaction, ctx WorkerCommand) {
+		ce.Clean()
 	}
 	ress := []*Result{}
 	for i := 0; i < worker.Worker; i++ {
@@ -144,32 +158,40 @@ func TestDispatchBlock(t *testing.T) {
 		ress = append(ress, res)
 	}
 	_, err = worker.Dispatch("test", fn)
-	if err == nil {
-		t.Errorf("Dispatch should fail")
+	if err != nil {
+		t.Errorf("Dispatch should fail:%v", err)
 	}
 
 	for _, res := range ress {
-		ce, err := res.Event.commandEvents.Find("test", res.Event.transaction)
+		ces, err := res.Event.protocol.Find(res.Event.transaction)
 		if err != nil {
 			t.Errorf("Find should not fail: %v", err)
 		}
-		ce.ResolvFn(res)
-		_, err = worker.Dispatch("test", fn)
-		if err != nil {
-			t.Errorf("Find should not fail: %v", err)
+		if len(ces) != 1 {
+			t.Errorf("Find should one: %v", err)
 		}
-		ce, err = res.Event.commandEvents.Find("test", res.Event.transaction)
-		if err != nil {
-			t.Errorf("Find should not fail: %v", err)
-		}
-		if ce != nil {
-			t.Errorf("Find should not find anything")
+		for _, ce := range ces {
+			ce.ResolvFn(ce, WorkerCommand{
+				Command:     "test",
+				Transaction: res.Event.transaction,
+			})
+			_, err = worker.Dispatch("test", fn)
+			if err != nil {
+				t.Errorf("Find should not fail: %v", err)
+			}
+			ces, err = res.Event.protocol.Find(res.Event.transaction)
+			if len(ces) != 0 {
+				t.Errorf("Find should return:%v", ces)
+			}
+			if err != nil {
+				t.Errorf("Find should not fail: %v", err)
+			}
 		}
 	}
 }
 
 func TestFullTurn(t *testing.T) {
-	worker := NewTimedWorker(&TimedWorker{
+	worker := NewWorkerProtocol(&WorkerProtocol{
 		Worker:     4,
 		TimeToStop: time.Duration(2 * time.Second),
 	})
@@ -179,21 +201,21 @@ func TestFullTurn(t *testing.T) {
 	}
 	defer worker.Shutdown()
 
-	worker.Actions.Register("Add+1", func(twrk *TimedWorker, cmd WorkerCommand, wrk *Worker) WorkerCommand {
+	worker.Actions.Register("Add+1", func(twrk *WorkerProtocol, cmd WorkerCommand, wrk *Worker) WorkerCommand {
 		return WorkerCommand{
 			Command: "Return+1",
 			Data:    cmd.Data.(int) + 1,
 		}
 	})
 
-	worker.Actions.Register("Add+2", func(twrk *TimedWorker, cmd WorkerCommand, wrk *Worker) WorkerCommand {
+	worker.Actions.Register("Add+2", func(twrk *WorkerProtocol, cmd WorkerCommand, wrk *Worker) WorkerCommand {
 		return WorkerCommand{
 			Command: "Return+2",
 			Data:    cmd.Data.(int) + 2,
 		}
 	})
 
-	worker.Actions.Register("Add+3", func(twrk *TimedWorker, cmd WorkerCommand, wrk *Worker) WorkerCommand {
+	worker.Actions.Register("Add+3", func(twrk *WorkerProtocol, cmd WorkerCommand, wrk *Worker) WorkerCommand {
 		return WorkerCommand{
 			Command: "Return+3",
 			Error:   fmt.Errorf("error"),
@@ -206,25 +228,188 @@ func TestFullTurn(t *testing.T) {
 	}
 	wait := sync.Mutex{}
 	wait.Lock()
-	worker.Invoke("Add+1", 42, "Return+1", func(res WorkerCommand) {
-		if res.Data.(int) != 43 {
-			t.Errorf("Add+1 should return 43, but is %d", res.Data.(int))
-		}
-		wait.Unlock()
+	_, err = worker.Invoke(InvokeParams{
+		Command:  "Add+1",
+		InParams: 42,
+		ResolvFn: func(_ *Transaction, res WorkerCommand) {
+			if res.Data.(int) != 43 {
+				t.Errorf("Add+1 should return 43, but is %d", res.Data.(int))
+			}
+			wait.Unlock()
+		},
 	})
+	if err != nil {
+		t.Errorf("worker invoke error: %v", err)
+	}
 	wait.Lock()
-	worker.Invoke("Add+2", 42, "Return+2", func(res WorkerCommand) {
-		if res.Data.(int) != 44 {
-			t.Errorf("Add+2 should return 44, but is %d", res.Data.(int))
-		}
-		wait.Unlock()
+	_, err = worker.Invoke(InvokeParams{
+		Command:  "Add+2",
+		InParams: 42,
+		ResolvFn: func(_ *Transaction, res WorkerCommand) {
+			if res.Data.(int) != 44 {
+				t.Errorf("Add+2 should return 44, but is %d", res.Data.(int))
+			}
+			wait.Unlock()
+		},
 	})
+	if err != nil {
+		t.Errorf("worker invoke error: %v", err)
+	}
+	wait.Lock()
+	res, err := worker.Invoke(InvokeParams{
+		Command:  "Add+3",
+		InParams: 42,
+		ResolvFn: func(_ *Transaction, res WorkerCommand) {
+			if res.Error == nil {
+				t.Errorf("Add+3 should return error")
+			}
+			wait.Unlock()
+		},
+	})
+	if err != nil {
+		t.Errorf("worker invoke error: %v", err)
+	}
+	wait.Lock()
+	worker.Dispatch("error", func(ce *Transaction, cmd WorkerCommand) {
+	})
+	worker.FromWorkers <- WorkerCommand{
+		Command:     "Return+3",
+		WorkerId:    "test",
+		Transaction: res.Event.transaction,
+		Data:        49,
+		Error:       nil,
+	}
 
-	wait.Lock()
-	worker.Invoke("Add+3", 42, "Return+3", func(res WorkerCommand) {
-		if res.Error == nil {
-			t.Errorf("Add+3 should return error")
+}
+
+func workerFn(t *testing.T, worker *WorkerProtocol, ofs int, cur int, done chan int) func(_ *Transaction, res WorkerCommand) {
+	return func(ce *Transaction, res WorkerCommand) {
+		if res.Error != nil {
+			t.Errorf("Add should return error")
 		}
-		wait.Unlock()
+		if cur != res.Data.(int)-1 {
+			t.Errorf("Add do the right thing")
+		}
+		if cur < ofs+100 {
+			// fmt.Fprintf(os.Stderr, "worker %d: %d", cur, res.Data.(int))
+			_, err := worker.Invoke(InvokeParams{
+				Command:  "Add",
+				InParams: cur + 1,
+				ResolvFn: workerFn(t, worker, ofs, cur+1, done),
+			})
+			if err != nil {
+				t.Errorf("Invoke should not fail: %v", err)
+			}
+		} else {
+			done <- cur - ofs
+		}
+	}
+}
+
+func TestError(t *testing.T) {
+	worker := NewWorkerProtocol(&WorkerProtocol{
+		Worker:     4,
+		TimeToStop: time.Duration(2 * time.Second),
 	})
+	err := worker.Setup()
+	if err != nil {
+		t.Errorf("worker setup error: %v", err)
+	}
+	defer worker.Shutdown()
+	pre := worker.FromWorkersProcessed
+	_, err = worker.Invoke(InvokeParams{
+		Command:  "Test1",
+		ResolvFn: func(_ *Transaction, res WorkerCommand) {},
+	})
+	if err != nil {
+		t.Errorf("worker invoke error: %v", err)
+	}
+	_, err = worker.Invoke(InvokeParams{
+		Command:  "Test2",
+		ResolvFn: func(_ *Transaction, res WorkerCommand) {},
+	})
+	if err != nil {
+		t.Errorf("worker invoke error: %v", err)
+	}
+	for pre+2 != worker.FromWorkersProcessed {
+		time.Sleep(1 * time.Millisecond) // ignore messages
+	}
+	if len(worker.FreeWorkers) != worker.Worker {
+		t.Errorf("All workers should be free")
+		return
+	}
+	cmds := []WorkerCommand{{Command: "Test3", Transaction: "3"}, {Command: "Test4", Transaction: "4"}}
+	done := sync.Mutex{}
+	done.Lock()
+	for i, cmd := range cmds {
+		myi := i
+		_, err = worker.Invoke(InvokeParams{
+			Command:  cmd.Command,
+			InParams: cmd.Data,
+			ResolvFn: func(_ *Transaction, res WorkerCommand) {
+				if res.Error == nil {
+					t.Error("Error should not be nil")
+				}
+				if myi == len(cmds)-1 {
+					fmt.Fprintf(os.Stderr, "Invoke: %v\n", res)
+					done.Unlock()
+				}
+			},
+		})
+		if err != nil {
+			t.Errorf("worker invoke error: %v", err)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "send error done\n")
+	done.Lock()
+	fmt.Fprintf(os.Stderr, "leave Test\n")
+}
+
+func TestLoadFull(t *testing.T) {
+	worker := NewWorkerProtocol(&WorkerProtocol{
+		Worker:     4,
+		TimeToStop: time.Duration(2 * time.Second),
+	})
+	err := worker.Setup()
+	if err != nil {
+		t.Errorf("worker setup error: %v", err)
+	}
+	defer worker.Shutdown()
+
+	if worker.Worker != len(worker.FreeWorkers) {
+		t.Errorf("Worker should be %d, but is %d", len(worker.FreeWorkers), worker.Worker)
+	}
+
+	worker.Actions.Register("Add", func(twrk *WorkerProtocol, cmd WorkerCommand, wrk *Worker) WorkerCommand {
+		time.Sleep(1 * time.Millisecond)
+		return WorkerCommand{
+			Command: "Return",
+			Data:    cmd.Data.(int) + 1,
+		}
+	})
+	done := make(chan int)
+	for i := 0; i < worker.Worker; i++ {
+		_, err := worker.Invoke(InvokeParams{
+			Command:  "Add",
+			InParams: i * 1000,
+			ResolvFn: workerFn(t, worker, i*1000, i*1000, done),
+		})
+		if err != nil {
+			t.Errorf("Invoke should not fail: %v", err)
+		}
+	}
+	total := 0
+	for i := 0; i < worker.Worker; i++ {
+		total += <-done
+	}
+	if total != worker.Worker*100 {
+		t.Errorf("Add should work:%d", total)
+	}
+	if len(worker.Workers) != len(worker.FreeWorkers) {
+		t.Errorf("All FreeWorkers should idle")
+	}
+	if len(worker.Transactions.transactions) != 0 {
+		t.Errorf("FreeWorkers be fine:%d %v", len(worker.Transactions.transactions), worker.Transactions.transactions)
+
+	}
 }
