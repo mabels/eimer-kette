@@ -2,10 +2,16 @@ package timedworker
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/google/uuid"
 )
 
 func TestSetupWorker(t *testing.T) {
@@ -412,4 +418,110 @@ func TestLoadFull(t *testing.T) {
 		t.Errorf("FreeWorkers be fine:%d %v", len(worker.Transactions.transactions), worker.Transactions.transactions)
 
 	}
+}
+
+type IndexObject struct {
+	Index int
+	Data  s3.PutObjectInput
+}
+
+func PutObjectResolv(t *testing.T, worker *WorkerProtocol, todos *map[int]IndexObject, todosSync *sync.Mutex, until time.Time, stop chan bool) func(_ *Transaction, res WorkerCommand) {
+	myFunc := func(_ *Transaction, res WorkerCommand) {
+		if res.Error != nil {
+			return
+		}
+		if time.Now().After(until) {
+			stop <- true
+			return
+		}
+		todosSync.Lock()
+		defer todosSync.Unlock()
+		indexObj := res.Data.(IndexObject)
+		delete(*todos, indexObj.Index)
+		run := false
+		for idx, _ := range *todos {
+			run = true
+			_, err := worker.Invoke(InvokeParams{
+				Command:  "PutObject",
+				InParams: (*todos)[idx],
+				ResolvFn: PutObjectResolv(t, worker, todos, todosSync, until, stop),
+			})
+			if err != nil {
+				t.Errorf("Invoke should not fail: %v", err)
+			}
+			break
+		}
+		if !run {
+			stop <- true
+		}
+	}
+	return myFunc
+}
+
+func TestTimeLambdaRun(t *testing.T) {
+	worker := NewWorkerProtocol(&WorkerProtocol{
+		Worker:     4,
+		TimeToStop: time.Duration(2 * time.Second),
+	})
+	err := worker.Setup()
+	if err != nil {
+		t.Errorf("worker setup error: %v", err)
+	}
+	defer worker.Shutdown()
+
+	worker.Actions.Register("PutObject", func(twrk *WorkerProtocol, cmd WorkerCommand, wrk *Worker) WorkerCommand {
+		time.Sleep(time.Duration(rand.Float32()*10) * time.Millisecond)
+		out := cmd
+		out.Data = cmd.Data
+		return out
+	})
+
+	batchSize := 1000
+	todos := map[int]IndexObject{}
+	todoSync := sync.Mutex{}
+	for i := 0; i < batchSize; i++ {
+		id := uuid.NewString()
+		todos[i] = IndexObject{
+			Index: i,
+			Data: s3.PutObjectInput{
+				Bucket:        aws.String("bucket"),
+				Key:           aws.String(fmt.Sprintf("path/%s.test", id)),
+				Body:          strings.NewReader(id),
+				ContentLength: int64(len(id)),
+			},
+		}
+	}
+	loops := 0
+	for len(todos) != 0 {
+		loops++
+		fmt.Fprintf(os.Stderr, "start loop:%d\n", loops)
+		startLen := len(todos)
+		started := time.Now()
+		until := started.Add(time.Duration(300 * time.Millisecond))
+		stop := make(chan bool, worker.Worker)
+		for i := 0; i < worker.Worker; i++ {
+			_, err := worker.Invoke(InvokeParams{
+				Command:  "PutObject",
+				InParams: todos[i],
+				ResolvFn: PutObjectResolv(t, worker, &todos, &todoSync, until, stop),
+			})
+			if err != nil {
+				t.Errorf("Invoke should not fail: %v", err)
+			}
+		}
+		for i := 0; i < worker.Worker; i++ {
+			<-stop
+		}
+		if time.Now().After(started.Add(350 * time.Millisecond)) {
+			t.Errorf("each run should be less:350ms")
+		}
+		fmt.Fprintf(os.Stderr, "done loop:%d,%d,%d\n", loops, startLen, len(todos))
+		if startLen < len(todos) {
+			t.Errorf("don't run:%d", len(todos))
+		}
+	}
+	if loops <= 1 {
+		t.Errorf("loops needed:%d", loops)
+	}
+
 }
