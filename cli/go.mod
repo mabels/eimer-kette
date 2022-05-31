@@ -1,6 +1,6 @@
-module github.com/mabels/eimer-kette
+module github.com/mabels/eimer-kette/cli
 
-go 1.17
+go 1.18
 
 require (
 	github.com/alitto/pond v1.5.1
@@ -12,6 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.10.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.19.0
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.12.1
+	github.com/google/uuid v1.1.2
 	github.com/mattn/go-sqlite3 v1.14.9
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/spf13/cobra v1.2.1

@@ -38,9 +38,15 @@ type Config struct {
 }
 
 type FrontendParams struct {
-	Sqlite   SqliteFrontendParams
-	Parquet  ParquetFrontendParams
-	Frontend *string
+	Sqlite          SqliteFrontendParams
+	Parquet         ParquetFrontendParams
+	Frontend        *string
+	AwsLambdaLister AwsLambdaListerParams
+}
+
+type AwsLambdaListerParams struct {
+	BackChannelQ SqsParams
+	CommandQ     SqsParams
 }
 
 type ParquetFrontendParams struct {
@@ -216,7 +222,36 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 					Filename:  &sqlFilename,
 					Query:     &sqlQuery,
 					TableName: &sqlTables,
-				}},
+				},
+				AwsLambdaLister: AwsLambdaListerParams{
+					BackChannelQ: SqsParams{
+						Workers:        new(int),
+						ChunkSize:      new(int),
+						Url:            new(string),
+						Delay:          new(int32),
+						MaxMessageSize: new(int),
+						Aws: AwsParams{
+							KeyId:           new(string),
+							SecretAccessKey: new(string),
+							SessionToken:    new(string),
+							Region:          new(string),
+						},
+					},
+					CommandQ: SqsParams{
+						Workers:        new(int),
+						ChunkSize:      new(int),
+						Url:            new(string),
+						Delay:          new(int32),
+						MaxMessageSize: new(int),
+						Aws: AwsParams{
+							KeyId:           new(string),
+							SecretAccessKey: new(string),
+							SessionToken:    new(string),
+							Region:          new(string),
+						},
+					},
+				},
+			},
 		},
 		InputConcurrent: 0,
 		Clients: Channels{
@@ -237,6 +272,14 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 
 func versionStr(args *Config) string {
 	return fmt.Sprintf("Version: %s:%s\n", args.Version, args.GitCommit)
+}
+
+func flagsAwsSqs(prefix string, flags *pflag.FlagSet, sqs *SqsParams) {
+	sqs.Url = flags.String(fmt.Sprintf("%sSqsUrl", prefix), *sqs.Url, fmt.Sprintf("%s url", prefix))
+	sqs.Delay = flags.Int32(fmt.Sprintf("%sSqsDelay", prefix), *sqs.Delay, fmt.Sprintf("%s delay", prefix))
+	sqs.MaxMessageSize = flags.Int(fmt.Sprintf("%sSqsMaxMessageSize", prefix), *sqs.MaxMessageSize, fmt.Sprintf("%s maxMessageSize", prefix))
+	sqs.Workers = flags.Int(fmt.Sprintf("%sSqsWorkers", prefix), *sqs.Workers, fmt.Sprintf("%s number of output sqs workers", prefix))
+	sqs.ChunkSize = flags.Int(fmt.Sprintf("%sSqsChunkSize", prefix), *sqs.ChunkSize, fmt.Sprintf("%s size of typical object chunks", prefix))
 }
 
 func ParseArgs(app *S3StreamingLister, osArgs []string) error {
@@ -261,11 +304,7 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.Config.Delimiter = flags.String("delimiter", *app.Config.Delimiter, "aws delimiter")
 	app.Config.Format = flags.String("format", *app.Config.Format, "mjson | sqs | awsls | sqlite | dynamo | s3delete | parquet")
 
-	app.Config.Output.Sqs.Url = flags.String("outputSqsUrl", *app.Config.Output.Sqs.Url, "url")
-	app.Config.Output.Sqs.Delay = flags.Int32("outputSqsDelay", *app.Config.Output.Sqs.Delay, "delay")
-	app.Config.Output.Sqs.MaxMessageSize = flags.Int("outputSqsMaxMessageSize", *app.Config.Output.Sqs.MaxMessageSize, "maxMessageSize")
-	app.Config.Output.Sqs.Workers = flags.Int("outputSqsWorkers", *app.Config.Output.Sqs.Workers, "number of output sqs workers")
-	app.Config.Output.Sqs.ChunkSize = flags.Int("outputSqsChunkSize", *app.Config.Output.Sqs.ChunkSize, "size of typical object chunks")
+	flagsAwsSqs("output", flags, &app.Config.Output.Sqs)
 
 	app.Config.Bucket = flags.StringP("bucket", "b", "", "aws bucket name")
 	app.Config.MaxKeys = flags.Int("maxKeys", *app.Config.MaxKeys, "aws maxKey pageElement size 1000")
@@ -279,6 +318,11 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.Config.Output.Parquet.Workers = flags.Int("parquetWorkers", *app.Config.Output.Parquet.Workers, "writer workers")
 	app.Config.Output.Parquet.ChunkSize = flags.Int("parquetChunkSize", *app.Config.Output.Parquet.ChunkSize, "writer workers")
 	app.Config.Output.Parquet.FileName = flags.String("parquetFilename", "", "parque output filename default stdout")
+
+	flagsAwsSqs("awsLambdaBackChannelQ", flags, &app.Config.Frontend.AwsLambdaLister.BackChannelQ)
+	flagsAws("awsLambdaBackChannelQ", flags, &app.Config.Frontend.AwsLambdaLister.BackChannelQ.Aws)
+	flagsAwsSqs("awsLambdaCommandQ", flags, &app.Config.Frontend.AwsLambdaLister.CommandQ)
+	flagsAws("awsLambdaCommandQ", flags, &app.Config.Frontend.AwsLambdaLister.CommandQ.Aws)
 
 	app.Config.Output.Sqlite.CleanDb = flags.Bool("sqliteCleanDb", *app.Config.Output.Sqlite.CleanDb, "set cleandb")
 	app.Config.Output.Sqlite.Workers = flags.Int("sqliteWorkers", *app.Config.Output.Sqlite.Workers, "writer workers")
@@ -376,6 +420,8 @@ func InitS3StreamingLister(app *S3StreamingLister) {
 	}
 	for _, awsParams := range []*AwsParams{
 		&app.Config.Lambda.Aws,
+		&app.Config.Frontend.AwsLambdaLister.BackChannelQ.Aws,
+		&app.Config.Frontend.AwsLambdaLister.CommandQ.Aws,
 		&app.Config.ListObject.Aws,
 		&app.Config.Output.Sqs.Aws,
 		&app.Config.Output.S3Delete.Aws} {

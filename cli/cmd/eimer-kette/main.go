@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/mabels/eimer-kette/config"
-	"github.com/mabels/eimer-kette/frontend"
-	myq "github.com/mabels/eimer-kette/my-queue"
-	ow "github.com/mabels/eimer-kette/outwriter"
-	"github.com/mabels/eimer-kette/status"
+	"github.com/mabels/eimer-kette/cli/config"
+	"github.com/mabels/eimer-kette/cli/frontend"
+	myq "github.com/mabels/eimer-kette/cli/my-queue"
+	ow "github.com/mabels/eimer-kette/cli/outwriter"
+	"github.com/mabels/eimer-kette/cli/status"
 )
 
 var version = "develop"
