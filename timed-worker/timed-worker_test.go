@@ -3,7 +3,6 @@ package timedworker
 import (
 	"fmt"
 	"math/rand"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -51,6 +50,12 @@ func TestSetupWorker(t *testing.T) {
 	err = worker.Shutdown()
 	if err != nil {
 		t.Error("worker shutdown error: ", err)
+	}
+	time.Sleep(time.Duration(10 * time.Millisecond))
+	for i := 0; i < worker.Worker; i++ {
+		if worker.Workers[i].Stop != 2 {
+			t.Errorf("worker %v is not stopped:%v", worker.Workers[i].Id, worker.Workers[i].Stop)
+		}
 	}
 	if worker.FromWorkersState != "Stopped" {
 		t.Errorf("FromWorkersState is not stopped:%v", worker.FromWorkersState)
@@ -357,7 +362,7 @@ func TestError(t *testing.T) {
 					t.Error("Error should not be nil")
 				}
 				if myi == len(cmds)-1 {
-					fmt.Fprintf(os.Stderr, "Invoke: %v\n", res)
+					// fmt.Fprintf(os.Stderr, "Invoke: %v\n", res)
 					done.Unlock()
 				}
 			},
@@ -366,9 +371,9 @@ func TestError(t *testing.T) {
 			t.Errorf("worker invoke error: %v", err)
 		}
 	}
-	fmt.Fprintf(os.Stderr, "send error done\n")
+	// fmt.Fprintf(os.Stderr, "send error done\n")
 	done.Lock()
-	fmt.Fprintf(os.Stderr, "leave Test\n")
+	// fmt.Fprintf(os.Stderr, "leave Test\n")
 }
 
 func TestLoadFull(t *testing.T) {
@@ -494,12 +499,16 @@ func TestTimeLambdaRun(t *testing.T) {
 	loops := 0
 	for len(todos) != 0 {
 		loops++
-		fmt.Fprintf(os.Stderr, "start loop:%d\n", loops)
+		// fmt.Fprintf(os.Stderr, "start loop:%d\n", loops)
 		startLen := len(todos)
 		started := time.Now()
 		until := started.Add(time.Duration(300 * time.Millisecond))
 		stop := make(chan bool, worker.Worker)
-		for i := 0; i < worker.Worker; i++ {
+		invokes := worker.Worker
+		if invokes > len(todos) {
+			invokes = len(todos)
+		}
+		for i := 0; i < invokes; i++ {
 			_, err := worker.Invoke(InvokeParams{
 				Command:  "PutObject",
 				InParams: todos[i],
@@ -509,13 +518,13 @@ func TestTimeLambdaRun(t *testing.T) {
 				t.Errorf("Invoke should not fail: %v", err)
 			}
 		}
-		for i := 0; i < worker.Worker; i++ {
+		for i := 0; i < invokes; i++ {
 			<-stop
 		}
 		if time.Now().After(started.Add(350 * time.Millisecond)) {
 			t.Errorf("each run should be less:350ms")
 		}
-		fmt.Fprintf(os.Stderr, "done loop:%d,%d,%d\n", loops, startLen, len(todos))
+		// fmt.Fprintf(os.Stderr, "done loop:%d,%d,%d\n", loops, startLen, len(todos))
 		if startLen < len(todos) {
 			t.Errorf("don't run:%d", len(todos))
 		}

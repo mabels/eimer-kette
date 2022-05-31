@@ -3,7 +3,6 @@ package timedworker
 import (
 	"fmt"
 	"os"
-	"reflect"
 	"sync"
 	"time"
 
@@ -53,7 +52,7 @@ func (wrk *WorkerProtocol) sendError(cmd *WorkerCommand, cmdErr error) {
 	}
 	for _, cerr := range cerrs {
 		// fmt.Fprintf(os.Stderr, "-3-sendError:%v\n", cmd)
-		fmt.Fprintf(os.Stderr, "-3.1-sendError:%v:%v:%v\n", cmd, reflect.ValueOf(cerr.ResolvFn), cerr)
+		// fmt.Fprintf(os.Stderr, "-3.1-sendError:%v:%v:%v\n", cmd, reflect.ValueOf(cerr.ResolvFn), cerr)
 		cerr.ResolvFn(cerr, WorkerCommand{
 			Command:     "error",
 			WorkerId:    cmd.WorkerId,
@@ -61,7 +60,7 @@ func (wrk *WorkerProtocol) sendError(cmd *WorkerCommand, cmdErr error) {
 			Data:        cmd,
 			Error:       cmdErr,
 		})
-		fmt.Fprintf(os.Stderr, "-3.2-sendError:%v:%v:%v\n", cmd, reflect.ValueOf(cerr.ResolvFn), cerr)
+		// fmt.Fprintf(os.Stderr, "-3.2-sendError:%v:%v:%v\n", cmd, reflect.ValueOf(cerr.ResolvFn), cerr)
 	}
 }
 
@@ -85,15 +84,15 @@ func (wrk *WorkerProtocol) startFromChannel() error {
 			ces, err := wrk.Transactions.Find(cmd.Transaction)
 			for _, ce := range ces {
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Pre-FromWorkers:Err:%v:%v\n", cmd, err)
+					// fmt.Fprintf(os.Stderr, "Pre-FromWorkers:Err:%v:%v\n", cmd, err)
 					wrk.sendError(&cmd, err)
-					fmt.Fprintf(os.Stderr, "Pos-FromWorkers:Err:%v:%v\n", cmd, err)
+					// fmt.Fprintf(os.Stderr, "Pos-FromWorkers:Err:%v:%v\n", cmd, err)
 					continue
 				}
 				if ce == nil {
-					fmt.Fprintf(os.Stderr, "Pre-FromWorkers:Ce:%v:%v\n", cmd, err)
+					// fmt.Fprintf(os.Stderr, "Pre-FromWorkers:Ce:%v:%v\n", cmd, err)
 					wrk.sendError(&cmd, fmt.Errorf("Unknown Transaction:%v", cmd.Transaction))
-					fmt.Fprintf(os.Stderr, "Pos-FromWorkers:Ce:%v:%v\n", cmd, err)
+					// fmt.Fprintf(os.Stderr, "Pos-FromWorkers:Ce:%v:%v\n", cmd, err)
 					continue
 				}
 
@@ -132,7 +131,7 @@ func (wrk *WorkerProtocol) Setup() error {
 	})
 	wrk.Actions.Register("stop", func(twrk *WorkerProtocol, cmd WorkerCommand, wrk *Worker) WorkerCommand {
 		// fmt.Fprintf(os.Stderr, "stop:%v\n", wrk.Id)
-		wrk.Stop = true
+		wrk.Stop = 1
 		res := cmd
 		res.Command = "stopped"
 		return res
@@ -159,34 +158,42 @@ func (wrk *WorkerProtocol) Setup() error {
 		// Real Worker
 		go func(w *Worker) {
 			w.FromWorker <- WorkerCommand{Command: "started", Data: w.Id, WorkerId: w.Id, Transaction: rs.Event.transaction}
-			w.Stop = false
-			for !w.Stop {
-				select {
-				case cmd := <-w.ToWorker:
-					action, ok := wrk.Actions[cmd.Command]
-					if !ok {
-						w.FromWorker <- WorkerCommand{
-							Command:     "error",
-							Error:       fmt.Errorf("Unknown command:%v", cmd),
-							WorkerId:    w.Id,
-							Data:        cmd,
-							Transaction: cmd.Transaction,
-						}
-					} else {
-						// fmt.Fprintf(os.Stderr, "Action:%v:%v\n", w.Id, cmd.Command)
-						res := action(wrk, cmd, w)
-						if res.Command == "" {
-							continue
-						}
-						if res.Transaction == "" {
-							res.Transaction = cmd.Transaction
-						}
-						res.WorkerId = w.Id
-						w.FromWorker <- res
+			w.Stop = 0
+			for w.Stop == 0 {
+				// select {
+				cmd := <-w.ToWorker
+				action, ok := wrk.Actions[cmd.Command]
+				var res WorkerCommand
+				if !ok {
+					if len(w.FromWorker) >= wrk.Worker {
+						fmt.Fprintf(os.Stderr, "FromWorker full")
 					}
-					wrk.FreeWorkers <- w
+					res = WorkerCommand{
+						Command:     "error",
+						Error:       fmt.Errorf("Unknown command:%v", cmd),
+						WorkerId:    w.Id,
+						Data:        cmd,
+						Transaction: cmd.Transaction,
+					}
+				} else {
+					// fmt.Fprintf(os.Stderr, "Action:%v:%v\n", w.Id, cmd.Command)
+					res = action(wrk, cmd, w)
+					if res.Transaction == "" {
+						res.Transaction = cmd.Transaction
+					}
+					res.WorkerId = w.Id
+					if len(w.FromWorker) >= wrk.Worker {
+						fmt.Fprintf(os.Stderr, "FromWorker full")
+					}
 				}
+				if len(wrk.FreeWorkers) >= wrk.Worker {
+					fmt.Fprintf(os.Stderr, "FreeWorkers full")
+				}
+				// this order is imortant
+				wrk.FreeWorkers <- w
+				w.FromWorker <- res
 			}
+			w.Stop = 2
 			// fmt.Fprintf(os.Stderr, "Worker:%v:stopped\n", w.Id)
 			// w.FromWorker <- WorkerCommand{Command: "stopped", Data: w.Id, WorkerId: w.Id, Transaction: w.Id}
 		}(wrk.Workers[w])
@@ -196,18 +203,37 @@ func (wrk *WorkerProtocol) Setup() error {
 }
 
 func (wrk *WorkerProtocol) Shutdown() error {
-	done, _, fn := wrk.collectFromAllWorker()
+	done := sync.Mutex{}
+	done.Lock()
+	shutdowns := map[string]WorkerCommand{}
 	for _, w := range wrk.Workers {
-		rs, err := wrk.Dispatch("stopped", fn)
+		_, err := wrk.Invoke(InvokeParams{
+			Command:  "stop",
+			InParams: w,
+			ResolvFn: func(ce *Transaction, cmd WorkerCommand) {
+				// fmt.Fprintf(os.Stderr, "ResolvFn:%v\n", cmd)
+				shutdowns[cmd.WorkerId] = cmd
+				if len(shutdowns) == wrk.Worker {
+					done.Unlock()
+				}
+			},
+			Worker: w,
+		})
 		if err != nil {
 			return err
 		}
-		w.ToWorker <- WorkerCommand{Command: "stop", WorkerId: w.Id, Transaction: rs.Event.transaction}
 	}
 	done.Lock()
 	wrk.FromWorkers <- WorkerCommand{Command: "stopFromChannel"}
 	wrk.FromWorkersStopped.Lock()
-	wrk.Workers = nil
+	for k := range wrk.Actions {
+		delete(wrk.Actions, k)
+	}
+	for _, w := range wrk.Workers {
+		close(w.ToWorker)
+	}
+	close(wrk.FreeWorkers)
+	// wrk.Workers = nil
 	return nil
 }
 
@@ -282,7 +308,7 @@ func (wrk *WorkerProtocol) Invoke(ip InvokeParams) (*Result, error) {
 		}
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "-2.1-Invoke:ToWorker:%v\n", err)
+		// fmt.Fprintf(os.Stderr, "-2.1-Invoke:ToWorker:%v\n", err)
 		return nil, err
 	}
 	if ip.Worker == nil {

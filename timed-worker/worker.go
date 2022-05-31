@@ -12,5 +12,5 @@ type Worker struct {
 	FromWorker chan WorkerCommand
 	Id         string
 	State      string
-	Stop       bool
+	Stop       int
 }
