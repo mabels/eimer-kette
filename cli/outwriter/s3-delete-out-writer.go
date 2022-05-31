@@ -9,9 +9,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/reactivex/rxgo/v2"
 
-	"github.com/mabels/eimer-kette/config"
-	myq "github.com/mabels/eimer-kette/my-queue"
-	"github.com/mabels/eimer-kette/status"
+	"github.com/mabels/eimer-kette/cli/config"
+	myq "github.com/mabels/eimer-kette/cli/my-queue"
+	"github.com/mabels/eimer-kette/cli/status"
 )
 
 type S3DeleteOutWriter struct {
@@ -47,12 +47,13 @@ func (sow *S3DeleteOutWriter) deleteObjects(items []interface{}) (*s3.DeleteObje
 	sow.app.Clients.Calls.Concurrent.Inc("S3Deletes")
 	started := time.Now()
 	out, err := client.DeleteObjects(context.TODO(), &todelete)
+	sow.s3Clients <- client
 	sow.app.Clients.Calls.Total.Duration("S3Deletes", started)
 	sow.app.Clients.Calls.Concurrent.Dec("S3Deletes")
 	if err != nil {
 		sow.chStatus.Push(status.RunStatus{Err: &err})
+		return nil, nil // might be an problem
 	}
-	sow.s3Clients <- client
 	return out, err
 }
 
@@ -79,9 +80,9 @@ func (sow *S3DeleteOutWriter) write(items *[]types.Object) {
 }
 
 func (sow *S3DeleteOutWriter) done() {
-	sow.waitComplete.Lock()
+	// order is important here
 	close(sow.typesObjectChannel)
-	sow.waitComplete.Unlock()
+	sow.waitComplete.Lock()
 }
 
 func makeS3DeleteOutWriter(app *config.S3StreamingLister, chStatus myq.MyQueue) OutWriter {

@@ -486,7 +486,7 @@ func TestTimeLambdaRun(t *testing.T) {
 	todos := map[int]IndexObject{}
 	todoSync := sync.Mutex{}
 	for i := 0; i < batchSize; i++ {
-		id := uuid.NewString()
+		id := uuid.New().String()
 		todos[i] = IndexObject{
 			Index: i,
 			Data: s3.PutObjectInput{

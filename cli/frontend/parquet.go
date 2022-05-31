@@ -9,10 +9,10 @@ import (
 	"github.com/xitongsys/parquet-go-source/local"
 	"github.com/xitongsys/parquet-go/reader"
 
-	config "github.com/mabels/eimer-kette/config"
-	"github.com/mabels/eimer-kette/models"
-	myq "github.com/mabels/eimer-kette/my-queue"
-	"github.com/mabels/eimer-kette/status"
+	config "github.com/mabels/eimer-kette/cli/config"
+	"github.com/mabels/eimer-kette/cli/models"
+	myq "github.com/mabels/eimer-kette/cli/my-queue"
+	"github.com/mabels/eimer-kette/cli/status"
 )
 
 func Parquet(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueue) {

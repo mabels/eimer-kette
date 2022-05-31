@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/mabels/eimer-kette/config"
-	"github.com/mabels/eimer-kette/models"
-	myq "github.com/mabels/eimer-kette/my-queue"
-	"github.com/mabels/eimer-kette/status"
 	"github.com/reactivex/rxgo/v2"
 	"github.com/xitongsys/parquet-go/parquet"
 	"github.com/xitongsys/parquet-go/writer"
+
+	"github.com/mabels/eimer-kette/cli/config"
+	"github.com/mabels/eimer-kette/cli/models"
+	"github.com/mabels/eimer-kette/cli/status"
+	myq "github.com/mabels/eimer-kette/cli/my-queue"
 )
 
 func toEimerKetteItem(obj *types.Object) models.EimerKetteItem {

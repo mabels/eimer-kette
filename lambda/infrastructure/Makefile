@@ -1,6 +1,6 @@
 
 all: ../handler/lambda.zip main.go
-	PULUMI_CONFIG_PASSPHRASE="" pulumi up -s eimer-kette -f
+	PULUMI_CONFIG_PASSPHRASE="" pulumi up -s eimer-fperson1 -f
 
 ../handler/lambda.zip: ../handler/main
 	cd ../handler && zip -o lambda.zip main

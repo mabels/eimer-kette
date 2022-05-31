@@ -2,12 +2,12 @@ package timedworker
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/opentracing/opentracing-go/log"
 )
 
 type Result struct {
@@ -46,7 +46,7 @@ func (wrk *WorkerProtocol) sendError(cmd *WorkerCommand, cmdErr error) {
 	cerrs, err := wrk.Transactions.Find("SystemError")
 	// fmt.Fprintf(os.Stderr, "-2-sendError:%v\n", cmd)
 	if err != nil {
-		log.Error(fmt.Errorf("transaction find error:%v", err))
+		log.Fatal(fmt.Errorf("transaction find error:%v", err))
 		// fmt.Fprintf(os.Stderr, "-2.1-sendError:%v\n", cmd)
 		return
 	}
@@ -360,7 +360,7 @@ func (wrk *WorkerProtocol) Dispatch(cmd string, runOnReceive func(ce *Transactio
 	if len(optional_transaction) > 0 {
 		transaction = optional_transaction[0]
 	} else {
-		transaction = uuid.NewString()
+		transaction = uuid.New().String()
 	}
 	// res := Result{
 	// 	Worker: freeWorker,
