@@ -1,17 +1,18 @@
-package main
+package eimerkette
 
 import (
-	"github.com/mabels/eimer-kette/cli/config"
-	"github.com/mabels/eimer-kette/cli/frontend"
-	myq "github.com/mabels/eimer-kette/cli/my-queue"
-	ow "github.com/mabels/eimer-kette/cli/outwriter"
-	"github.com/mabels/eimer-kette/cli/status"
+	"github.com/mabels/eimer-kette/config"
+	"github.com/mabels/eimer-kette/frontend"
+	myq "github.com/mabels/eimer-kette/my-queue"
+	ow "github.com/mabels/eimer-kette/outwriter"
+	"github.com/mabels/eimer-kette/status"
 )
 
 var version = "develop"
 var commit = "unknown"
 
-func main() {
+func CliMain() {
+
 	config.Version = version
 	config.GitCommit = commit
 	app := config.DefaultS3StreamingLister()

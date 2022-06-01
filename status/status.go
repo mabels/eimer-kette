@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mabels/eimer-kette/cli/config"
-	myq "github.com/mabels/eimer-kette/cli/my-queue"
+	"github.com/mabels/eimer-kette/config"
+	myq "github.com/mabels/eimer-kette/my-queue"
 )
 
 type RunStatus struct {

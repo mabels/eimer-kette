@@ -3,8 +3,8 @@ package frontend
 import (
 	"sync/atomic"
 
-	config "github.com/mabels/eimer-kette/cli/config"
-	myq "github.com/mabels/eimer-kette/cli/my-queue"
+	config "github.com/mabels/eimer-kette/config"
+	myq "github.com/mabels/eimer-kette/my-queue"
 )
 
 func Frontend(app *config.S3StreamingLister, cho myq.MyQueue, chstatus myq.MyQueue) {

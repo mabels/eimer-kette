@@ -1,23 +1,22 @@
-package main
+package lambda
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/config"
+
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/google/uuid"
 	"github.com/reactivex/rxgo/v2"
+	// "/frontend"
 )
 
 type Frame struct {
@@ -76,10 +75,10 @@ type CreateFiles struct {
 }
 
 type HandlerCtx struct {
-	sqsClient     *sqs.Client
-	queueUrl      string
-	s3Clients     *map[string]*s3.Client
-	s3ClientsSync sync.Mutex
+	SqsClient     *sqs.Client
+	QueueUrl      string
+	S3Clients     *map[string]*s3.Client
+	S3ClientsSync sync.Mutex
 }
 
 type Result struct {
@@ -179,12 +178,12 @@ func (hctx *HandlerCtx) pushJobSizeCommands(cmd *CreateTestCmd, jobSize int64, s
 			log.Printf("pushJobSizeCommands:reschedule: %v", cleanCreateTestPayload(cmd))
 			jsonCreateCmd, _ := json.Marshal(*cmd)
 			jsonCreateStr := string(jsonCreateCmd)
-			_, err := hctx.sqsClient.SendMessage(context.TODO(), &sqs.SendMessageInput{
-				QueueUrl:    &hctx.queueUrl,
+			_, err := hctx.SqsClient.SendMessage(context.TODO(), &sqs.SendMessageInput{
+				QueueUrl:    &hctx.QueueUrl,
 				MessageBody: &jsonCreateStr,
 			})
 			if err != nil {
-				log.Printf("SQS-SendMessage: %v:%v", hctx.queueUrl, err)
+				log.Printf("SQS-SendMessage: %v:%v", hctx.QueueUrl, err)
 			}
 			log.Printf("pushJobSizeCommands:took %f", time.Since(started).Seconds())
 			return
@@ -198,12 +197,12 @@ func (hctx *HandlerCtx) pushJobSizeCommands(cmd *CreateTestCmd, jobSize int64, s
 		// log.Printf("pushSingleCommands:%d of %d:%v", done, cmd.Payload.NumberOfFiles, cleanCreateTestPayload(&my))
 		jsonCreateCmd, _ := json.Marshal(my)
 		jsonCreateStr := string(jsonCreateCmd)
-		_, err := hctx.sqsClient.SendMessage(context.TODO(), &sqs.SendMessageInput{
-			QueueUrl:    &hctx.queueUrl,
+		_, err := hctx.SqsClient.SendMessage(context.TODO(), &sqs.SendMessageInput{
+			QueueUrl:    &hctx.QueueUrl,
 			MessageBody: &jsonCreateStr,
 		})
 		if err != nil {
-			log.Printf("SQS-SendMessage: %v:%v", hctx.queueUrl, err)
+			log.Printf("SQS-SendMessage: %v:%v", hctx.QueueUrl, err)
 		}
 	}
 }
@@ -265,7 +264,7 @@ func (hctx *HandlerCtx) handler(ctx context.Context, sqsEvent events.SQSEvent) e
 					hctx.createTestHandler(&cmd, started)
 				}
 			case "lister":
-				cmd := ListerCommand{}
+				cmd := CreateTestCmd{}
 				err := json.Unmarshal([]byte(message.Body), &cmd)
 				if err != nil {
 					return fmt.Errorf("JsonCreateTestCmd: %v", err)
@@ -283,32 +282,32 @@ func (hctx *HandlerCtx) handler(ctx context.Context, sqsEvent events.SQSEvent) e
 	}
 	if len(requeue) > 0 {
 		log.Printf("Requeued: %v", len(requeue))
-		_, err := hctx.sqsClient.SendMessageBatch(context.TODO(), &sqs.SendMessageBatchInput{
-			QueueUrl: &hctx.queueUrl,
+		_, err := hctx.SqsClient.SendMessageBatch(context.TODO(), &sqs.SendMessageBatchInput{
+			QueueUrl: &hctx.QueueUrl,
 			Entries:  requeue,
 		})
 		if err != nil {
-			log.Printf("SQS-SendMessage: %v:%v", hctx.queueUrl, err)
+			log.Printf("SQS-SendMessage: %v:%v", hctx.QueueUrl, err)
 		}
 	}
 	return nil
 }
 
-func handlerWithContext(handler *HandlerCtx) func(ctx context.Context, sqsEvent events.SQSEvent) error {
+func HandlerWithContext(handler *HandlerCtx) func(ctx context.Context, sqsEvent events.SQSEvent) error {
 	return func(ctx context.Context, sqsEvent events.SQSEvent) error {
 		return handler.handler(ctx, sqsEvent)
 	}
 }
 
-func main() {
-	cfg, err := config.LoadDefaultConfig(context.TODO())
-	if err != nil {
-		log.Fatalf("configuration error; %v", err)
-	}
-	handler := HandlerCtx{
-		queueUrl:      os.Getenv("AWS_SQS_QUEUE"),
-		sqsClient:     sqs.NewFromConfig(cfg),
-		s3ClientsSync: sync.Mutex{},
-	}
-	lambda.Start(handlerWithContext(&handler))
-}
+// func main() {
+// 	cfg, err := config.LoadDefaultConfig(context.TODO())
+// 	if err != nil {
+// 		log.Fatalf("configuration error; %v", err)
+// 	}
+// 	handler := HandlerCtx{
+// 		queueUrl:      os.Getenv("AWS_SQS_QUEUE"),
+// 		sqsClient:     sqs.NewFromConfig(cfg),
+// 		s3ClientsSync: sync.Mutex{},
+// 	}
+// 	lambda.Start(handlerWithContext(&handler))
+// }

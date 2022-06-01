@@ -14,9 +14,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"github.com/mabels/eimer-kette/cli/config"
-	myq "github.com/mabels/eimer-kette/cli/my-queue"
-	"github.com/mabels/eimer-kette/cli/status"
+	"github.com/mabels/eimer-kette/config"
+	myq "github.com/mabels/eimer-kette/my-queue"
+	"github.com/mabels/eimer-kette/status"
 )
 
 type SqlLiteOutWriter struct {

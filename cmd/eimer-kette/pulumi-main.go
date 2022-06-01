@@ -1,7 +1,8 @@
-package main
+package eimerkette
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws"
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/cloudwatch"
@@ -10,62 +11,81 @@ import (
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/s3"
 	"github.com/pulumi/pulumi-aws/sdk/v5/go/aws/sqs"
 
-	"github.com/pulumi/pulumi-command/sdk/go/command/local"
-
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func buildZip(ctx *pulumi.Context, path string) (*local.Command, error) {
-	gobuild, err := local.NewCommand(ctx, "build-lambda", &local.CommandArgs{
-		Create: pulumi.String(fmt.Sprintf(`
-			cd %s && \
-			env && \
-			go build ./main.go && \
-			zip -o lambda.zip main
-		`, path)),
-		Dir: nil,
-		Environment: pulumi.StringMap{
-			"GOOS":        pulumi.String("linux"),
-			"GOARCH":      pulumi.String("amd64"),
-			"CGO_ENABLED": pulumi.String("0"),
-		},
-		// Delete:      nil,
-		// Interpreter: nil,
-		// Stdin:       nil,
-		// Triggers:    nil,
-	})
-	if err != nil {
-		return nil, err
+// func buildZip(ctx *pulumi.Context, path string) (*local.Command, error) {
+// 	gobuild, err := local.NewCommand(ctx, "build-lambda", &local.CommandArgs{
+// 		Create: pulumi.String(fmt.Sprintf(`
+// 			cd %s && \
+// 			env && \
+// 			go build ./main.go && \
+// 			zip -o lambda.zip main
+// 		`, path)),
+// 		Dir: nil,
+// 		Environment: pulumi.StringMap{
+// 			"GOOS":        pulumi.String("linux"),
+// 			"GOARCH":      pulumi.String("amd64"),
+// 			"CGO_ENABLED": pulumi.String("0"),
+// 		},
+// 		// Delete:      nil,
+// 		// Interpreter: nil,
+// 		// Stdin:       nil,
+// 		// Triggers:    nil,
+// 	})
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	ctx.Export("go build stdout", gobuild.Stdout.ToStringOutput())
+// 	ctx.Export("go build stderr", gobuild.Stderr.ToStringOutput())
+// 	// res2, _ := NewMyResource(ctx, "res2", &MyResourceArgs{/*...*/}, pulumi.DependsOn([]Resource{res1}))
+
+// 	// archive, err := os.Create("lambda.zip")
+// 	// if err != nil {
+// 	// 	return err
+// 	// }
+// 	// defer archive.Close()
+// 	// zipWriter := zip.NewWriter(archive)
+
+// 	// f1, err := os.Open("../handler/main")
+// 	// if err != nil {
+// 	// 	return err
+// 	// }
+// 	// defer f1.Close()
+
+// 	// w1, err := zipWriter.Create("main")
+// 	// if err != nil {
+// 	// 	return err
+// 	// }
+// 	// if _, err := io.Copy(w1, f1); err != nil {
+// 	// 	return err
+// 	// }
+// 	// zipWriter.Close()
+// 	return gobuild, nil
+// }
+
+func isPulumi() bool {
+	for _, envKey := range []string{
+		"PULUMI_PROJECT",
+		"PULUMI_STACK",
+		"PULUMI_CONFIG_SECRET_KEYS",
+		"PULUMI_DRY_RUN",
+		"PULUMI_PARALLEL",
+		"PULUMI_MONITOR",
+		"PULUMI_ENGINE",
+	} {
+		if _, ok := os.LookupEnv(envKey); !ok {
+			return false
+		}
+
 	}
-	ctx.Export("go build stdout", gobuild.Stdout.ToStringOutput())
-	ctx.Export("go build stderr", gobuild.Stderr.ToStringOutput())
-	// res2, _ := NewMyResource(ctx, "res2", &MyResourceArgs{/*...*/}, pulumi.DependsOn([]Resource{res1}))
-
-	// archive, err := os.Create("lambda.zip")
-	// if err != nil {
-	// 	return err
-	// }
-	// defer archive.Close()
-	// zipWriter := zip.NewWriter(archive)
-
-	// f1, err := os.Open("../handler/main")
-	// if err != nil {
-	// 	return err
-	// }
-	// defer f1.Close()
-
-	// w1, err := zipWriter.Create("main")
-	// if err != nil {
-	// 	return err
-	// }
-	// if _, err := io.Copy(w1, f1); err != nil {
-	// 	return err
-	// }
-	// zipWriter.Close()
-	return gobuild, nil
+	return true
 }
 
-func main() {
+func PulumiMain() {
+	if !isPulumi() {
+		return
+	}
 
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		current, err := aws.GetCallerIdentity(ctx, nil, nil)
@@ -195,7 +215,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		version := "DEV"
+		// version := "DEV"
 
 		lambdaName := fmt.Sprintf("%s-lambda", queueName)
 		lambaLogs, err := cloudwatch.NewLogGroup(ctx, lambdaName, &cloudwatch.LogGroupArgs{
@@ -206,13 +226,13 @@ func main() {
 		}
 
 		lambdaFn, err := lambda.NewFunction(ctx, lambdaName, &lambda.FunctionArgs{
-			Code:    pulumi.NewFileArchive("../handler/lambda.zip"),
+			Code:    pulumi.NewFileArchive("./dist/amd64-lambda.zip"),
 			Role:    qaccess.Arn,
-			Handler: pulumi.String("main"),
+			Handler: pulumi.String("amd64-lambda"),
 			Runtime: pulumi.String("go1.x"),
 			Environment: &lambda.FunctionEnvironmentArgs{
 				Variables: pulumi.StringMap{
-					"VERSION":       pulumi.String(version),
+					// "VERSION":       pulumi.String(version),
 					"AWS_SQS_QUEUE": queue.Url,
 					// "AWS_REGION":    pulumi.String(region.Name),
 				},
@@ -237,4 +257,5 @@ func main() {
 		// ctx.Export("secretKey", testVolumeCredentials.EncryptedSecret)
 		return nil
 	})
+	os.Exit(0)
 }

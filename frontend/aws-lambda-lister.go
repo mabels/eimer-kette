@@ -8,9 +8,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 
-	config "github.com/mabels/eimer-kette/cli/config"
-	myq "github.com/mabels/eimer-kette/cli/my-queue"
-	"github.com/mabels/eimer-kette/cli/status"
+	config "github.com/mabels/eimer-kette/config"
+	myq "github.com/mabels/eimer-kette/my-queue"
+	"github.com/mabels/eimer-kette/status"
 )
 
 func startBackChannel(app *config.S3StreamingLister, cho myq.MyQueue, chstatus myq.MyQueue) {

@@ -1,4 +1,4 @@
-package main
+package lambda
 
 import (
 	"context"
@@ -24,12 +24,12 @@ func (my *MyCredentials) Retrieve(ctx context.Context) (aws.Credentials, error) 
 // }
 
 func (hctx *HandlerCtx) getClient(cmd *CreateTestCmd) (*s3.Client, chan *s3.Client) {
-	hctx.s3ClientsSync.Lock()
-	defer hctx.s3ClientsSync.Unlock()
-	if hctx.s3Clients == nil {
-		hctx.s3Clients = &map[string]*s3.Client{}
+	hctx.S3ClientsSync.Lock()
+	defer hctx.S3ClientsSync.Unlock()
+	if hctx.S3Clients == nil {
+		hctx.S3Clients = &map[string]*s3.Client{}
 	}
-	client, ok := (*hctx.s3Clients)[cmd.Payload.Bucket.Name]
+	client, ok := (*hctx.S3Clients)[cmd.Payload.Bucket.Name]
 	if !ok {
 		// 	channel = make(chan *s3.Client, cmd.Payload.JobConcurrent)
 		// }
@@ -51,7 +51,7 @@ func (hctx *HandlerCtx) getClient(cmd *CreateTestCmd) (*s3.Client, chan *s3.Clie
 			Region:      *cmd.Payload.Bucket.Region,
 		}
 		client = s3.NewFromConfig(cfg)
-		(*hctx.s3Clients)[cmd.Payload.Bucket.Name] = client
+		(*hctx.S3Clients)[cmd.Payload.Bucket.Name] = client
 	}
 	return client, nil
 }
