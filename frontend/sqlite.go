@@ -15,17 +15,17 @@ import (
 	"github.com/mabels/eimer-kette/status"
 )
 
-func Sqlite(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueue) {
+func Sqlite(app *config.EimerKette, cho myq.MyQueue, chStatus myq.MyQueue) {
 	db, err := sql.Open("sqlite3", *app.Config.Frontend.Sqlite.Filename)
 	if err != nil {
-		chStatus.Push(status.RunStatus{Fatal: &err})
+		chStatus.Push(status.RunStatus{Fatal: err})
 		return
 	}
 	var tableName string
 	if *app.Config.Frontend.Sqlite.TableName != "" {
 		tableName = *app.Config.Frontend.Sqlite.TableName
 	} else {
-		tableName = strings.ReplaceAll(strings.ReplaceAll(*app.Config.Bucket, ".", "_"), "-", "_")
+		tableName = strings.ReplaceAll(strings.ReplaceAll(*app.Config.Bucket.Name, ".", "_"), "-", "_")
 	}
 	go func() {
 		producer := 0
@@ -34,7 +34,7 @@ func Sqlite(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueue
 			// fmt.Fprintln(os.Stderr, "Producer:", producer)
 			rows, err := db.Query(fmt.Sprintf(*app.Config.Frontend.Sqlite.Query, tableName))
 			if err != nil {
-				chStatus.Push(status.RunStatus{Fatal: &err})
+				chStatus.Push(status.RunStatus{Fatal: err})
 			}
 			defer rows.Close()
 			cnt := 0
@@ -45,7 +45,7 @@ func Sqlite(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueue
 				var size int64
 				err := rows.Scan(&key, &time, &size)
 				if err != nil {
-					chStatus.Push(status.RunStatus{Err: &err})
+					chStatus.Push(status.RunStatus{Err: err})
 				} else {
 					res := types.Object{
 						Key:          &key,
@@ -63,7 +63,7 @@ func Sqlite(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueue
 		nextCnt := 0
 		for item := range obs.Observe() {
 			if item.E != nil {
-				chStatus.Push(status.RunStatus{Err: &item.E})
+				chStatus.Push(status.RunStatus{Err: item.E})
 			}
 			if item.V != nil {
 				items := item.V.([]interface{})

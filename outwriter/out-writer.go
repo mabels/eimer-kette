@@ -15,7 +15,7 @@ type OutWriter interface {
 	done()
 }
 
-func OutWriterProcessor(app *config.S3StreamingLister, chstatus myq.MyQueue) myq.MyQueue {
+func OutWriterProcessor(app *config.EimerKette, chstatus myq.MyQueue) myq.MyQueue {
 	cho := myq.MakeChannelQueue(*app.Config.MaxKeys)
 	var ow OutWriter
 	switch *app.Config.Format {

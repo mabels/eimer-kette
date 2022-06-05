@@ -22,7 +22,7 @@ import (
 type SqlLiteOutWriter struct {
 	// pool       *pond.WorkerPool
 	typesObjectChannel chan rxgo.Item
-	app                *config.S3StreamingLister
+	app                *config.EimerKette
 	chStatus           myq.MyQueue
 	waitComplete       sync.Mutex
 	// db         *sql.DB
@@ -35,13 +35,13 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 	}
 	db, err := sql.Open("sqlite3", *sow.app.Config.Output.Sqlite.Filename)
 	if err != nil {
-		sow.chStatus.Push(status.RunStatus{Err: &err})
+		sow.chStatus.Push(status.RunStatus{Err: err})
 	}
 	var tableName string
 	if *sow.app.Config.Output.Sqlite.SqlTable != "" {
 		tableName = *sow.app.Config.Output.Sqlite.SqlTable
 	} else {
-		tableName = strings.ReplaceAll(strings.ReplaceAll(*sow.app.Config.Bucket, ".", "_"), "-", "_")
+		tableName = strings.ReplaceAll(strings.ReplaceAll(*sow.app.Config.Bucket.Name, ".", "_"), "-", "_")
 	}
 	// defer sow.db.Close()
 	if *sow.app.Config.Output.Sqlite.CleanDb {
@@ -54,7 +54,7 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 	`, tableName)
 		_, err = db.Exec(createTable)
 		if err != nil {
-			sow.chStatus.Push(status.RunStatus{Err: &err})
+			sow.chStatus.Push(status.RunStatus{Err: err})
 		}
 	}
 	sow.typesObjectChannel = make(chan rxgo.Item, *sow.app.Config.Output.Sqlite.CommitSize**sow.app.Config.Output.Sqlite.Workers)
@@ -62,7 +62,7 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 	insertStmt, err := db.Prepare(
 		fmt.Sprintf("insert into %s(key, mtime, size, created_at) values(?, ?, ?, CURRENT_TIMESTAMP)", tableName))
 	if err != nil {
-		sow.chStatus.Push(status.RunStatus{Err: &err})
+		sow.chStatus.Push(status.RunStatus{Err: err})
 	}
 
 	observable := rxgo.FromChannel(sow.typesObjectChannel).BufferWithCount(*sow.app.Config.Output.Sqlite.CommitSize).Map(
@@ -70,7 +70,7 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 			started := time.Now()
 			tx, err := db.Begin()
 			if err != nil {
-				sow.chStatus.Push(status.RunStatus{Err: &err})
+				sow.chStatus.Push(status.RunStatus{Err: err})
 				return nil, err
 			}
 			my := tx.Stmt(insertStmt)
@@ -80,7 +80,7 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 				sow.app.Clients.Calls.Total.Inc("sqlite-insert")
 				if err != nil {
 					sow.app.Clients.Calls.Error.Inc("sqlite-insert")
-					sow.chStatus.Push(status.RunStatus{Err: &err})
+					sow.chStatus.Push(status.RunStatus{Err: err})
 				}
 			}
 
@@ -88,7 +88,7 @@ func (sow *SqlLiteOutWriter) setup() OutWriter {
 			err = tx.Commit()
 			sow.app.Clients.Calls.Total.Duration("sqlite-inserts", started)
 			if err != nil {
-				sow.chStatus.Push(status.RunStatus{Err: &err})
+				sow.chStatus.Push(status.RunStatus{Err: err})
 				return nil, err
 			}
 			return nil, nil
@@ -116,7 +116,7 @@ func (sow *SqlLiteOutWriter) done() {
 	// sow.waitComplete.Unlock()
 }
 
-func makeSqliteOutWriter(app *config.S3StreamingLister, chStatus myq.MyQueue) OutWriter {
+func makeSqliteOutWriter(app *config.EimerKette, chStatus myq.MyQueue) OutWriter {
 	if *app.Config.Output.Sqlite.Workers < 1 {
 		panic("you need at least one worker for sqs")
 	}

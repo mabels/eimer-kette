@@ -20,7 +20,7 @@ import (
 
 type DynamoOutWriter struct {
 	pool *pond.WorkerPool
-	app  *config.S3StreamingLister
+	app  *config.EimerKette
 	dbs  chan *dynamodb.Client
 	// insertStmt *sql.Stmt
 }
@@ -115,7 +115,7 @@ func (sow *DynamoOutWriter) write(items *[]s3types.Object) {
 func (sow *DynamoOutWriter) done() {
 }
 
-func makeDynamoOutWriter(app *config.S3StreamingLister) OutWriter {
+func makeDynamoOutWriter(app *config.EimerKette) OutWriter {
 	if *app.Config.Output.DynamoDb.Workers < 1 {
 		panic("you need at least one worker for sqs")
 	}

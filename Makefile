@@ -6,7 +6,7 @@ dist/cli: dist
 	go build -o dist/cli main.go
 
 pulumi: dist/amd64-lambda.zip
-	PULUMI_CONFIG_PASSPHRASE="" pulumi up -s eimer-fperson1 -f
+	PULUMI_CONFIG_PASSPHRASE="" pulumi up  -f
 
 release:
 	goreleaser build --single-target --skip-validate --rm-dist

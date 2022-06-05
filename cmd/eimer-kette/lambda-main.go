@@ -43,9 +43,12 @@ func LambdaMain() {
 		log.Fatalf("configuration error; %v", err)
 	}
 	handler := mylambda.HandlerCtx{
-		QueueUrl:      os.Getenv("AWS_SQS_QUEUE"),
-		SqsClient:     sqs.NewFromConfig(cfg),
-		S3ClientsSync: sync.Mutex{},
+		SqsClient: &mylambda.BackChannel{
+			Sqs: sqs.NewFromConfig(cfg),
+			Url: os.Getenv("AWS_SQS_QUEUE"),
+		},
+		S3ClientsSync:  sync.Mutex{},
+		SqsClientsSync: sync.Mutex{},
 	}
 	lambda.Start(mylambda.HandlerWithContext(&handler))
 

@@ -17,10 +17,6 @@ func CliMain() {
 	config.GitCommit = commit
 	app := config.DefaultS3StreamingLister()
 	config.InitS3StreamingLister(app)
-	if *app.Config.Lambda.Start {
-		// lambda.Start(AwsHandleRequest)
-		return
-	}
 
 	chstatus := myq.MakeChannelQueue(*app.Config.Output.Sqs.Workers * *app.Config.S3Workers * 10)
 	statusStartedDone := make(chan bool)

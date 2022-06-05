@@ -16,6 +16,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+type BucketParams struct {
+	Name *string
+	Aws  AwsParams
+}
+
 type Config struct {
 	GitCommit     string
 	Version       string
@@ -24,7 +29,7 @@ type Config struct {
 	Prefix        *string
 	Delimiter     *string
 	Format        *string
-	Bucket        *string
+	Bucket        BucketParams
 	MaxKeys       *int
 	S3Workers     *int
 	StatsFragment *uint64
@@ -33,20 +38,29 @@ type Config struct {
 	Progress      *int
 	Output        OutputParams
 	ListObject    ListObjectParams
-	Lambda        LambdaParams
-	Frontend      FrontendParams
+	// Lambda        LambdaParams
+	Frontend FrontendParams
 }
 
 type FrontendParams struct {
-	Sqlite          SqliteFrontendParams
-	Parquet         ParquetFrontendParams
-	Frontend        *string
-	AwsLambdaLister AwsLambdaListerParams
+	Sqlite               SqliteFrontendParams
+	Parquet              ParquetFrontendParams
+	Frontend             *string
+	AwsLambdaLister      AwsLambdaListerParams
+	AwsLambdaCreateFiles AwsLambdaCreateFileParams
 }
 
 type AwsLambdaListerParams struct {
 	BackChannelQ SqsParams
 	CommandQ     SqsParams
+}
+
+type AwsLambdaCreateFileParams struct {
+	NumberOfFiles *int64
+	JobConcurrent *int
+	JobSize       *int
+	BackChannelQ  SqsParams
+	CommandQ      SqsParams
 }
 
 type ParquetFrontendParams struct {
@@ -141,7 +155,7 @@ type Output struct {
 	// FileName *string
 }
 
-type S3StreamingLister struct {
+type EimerKette struct {
 	Config          Config
 	InputConcurrent int32
 	Clients         Channels
@@ -151,24 +165,26 @@ type S3StreamingLister struct {
 var GitCommit string
 var Version string
 
-func DefaultS3StreamingLister() *S3StreamingLister {
+func DefaultS3StreamingLister() *EimerKette {
 	prefix := ""
 	delimiter := "/"
 	mjson := "mjson"
 	outputSqsUrl := ""
 	outputSqsDelay := int32(10)
 	outputSqsMaxMessageSize := 137715
-	// bucket := nil
+	s3DeleteWorkers := 16
+	s3DeleteChunkSize := 1000
+	sqsChunkSize := 1000
+	sqlWorkers := 8
+	sqliteCommitSize := 1000
+	outputSqsWorkers := 2
+
+	// bucket := ""
 	keyId := ""
 	secretAccessKey := ""
 	sessionToken := ""
 	region := "eu-central-1"
 	s3Workers := 16
-	s3DeleteWorkers := 16
-	s3DeleteChunkSize := 1000
-	sqsChunkSize := 1000
-	sqlWorkers := 8
-	outputSqsWorkers := 2
 	maxKeys := 1000
 	statsFragment := uint64(10000)
 	falseVal := false
@@ -189,10 +205,14 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 	parquetRowBuffer := 10000
 	parquetFilename := "./file.parquet"
 	// parquetFilename := "./files.parquet"
-	commitSize := 2000
+	// commitSize := 2000
 	frontend := "aws-s3"
 	sqlQuery := "select key, mtime, size from %s"
-	app := S3StreamingLister{
+
+	numberOfFiles := int64(0)
+	jobConcurrent := int(1)
+	jobSize := int(100)
+	app := EimerKette{
 		Config: Config{
 			GitCommit:     GitCommit,
 			Version:       Version,
@@ -201,16 +221,54 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 			Prefix:        &prefix,
 			Delimiter:     &delimiter,
 			Format:        &mjson,
-			Bucket:        nil,
+			Bucket:        BucketParams{Name: nil, Aws: AwsParams{KeyId: new(string), SecretAccessKey: new(string), SessionToken: new(string), Region: &region, Cfg: aws.Config{}}},
 			MaxKeys:       &maxKeys,
 			S3Workers:     &s3Workers,
 			StatsFragment: &statsFragment,
 			Help:          false,
 			VersionFlag:   false,
 			Progress:      &progress,
-			Output:        OutputParams{Sqlite: SqliteParams{CommitSize: &commitSize, Workers: &sqlWorkers, CleanDb: &falseVal, Filename: &sqlFilename, SqlTable: &sqlTables}, Parquet: ParquetParams{Workers: &sqlWorkers, ChunkSize: &commitSize}, Sqs: SqsParams{ChunkSize: &sqsChunkSize, Workers: &outputSqsWorkers, Delay: &outputSqsDelay, Url: &outputSqsUrl, MaxMessageSize: &outputSqsMaxMessageSize, Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}}, S3Delete: S3DeleteParams{Workers: &s3DeleteWorkers, ChunkSize: &s3DeleteChunkSize, Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}}, DynamoDb: DynamoDbParams{Workers: &s3DeleteWorkers, Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}}},
-			ListObject:    ListObjectParams{Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}},
-			Lambda:        LambdaParams{Deploy: &falseVal, Start: &falseVal, Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}},
+			Output: OutputParams{
+				Sqs: SqsParams{
+					Url:            &outputSqsUrl,
+					Delay:          &outputSqsDelay,
+					MaxMessageSize: &outputSqsMaxMessageSize,
+					ChunkSize:      &sqsChunkSize,
+					Workers:        &outputSqsWorkers,
+					Aws: AwsParams{
+						KeyId:           new(string),
+						SecretAccessKey: new(string),
+						SessionToken:    new(string),
+						Region:          new(string),
+						Cfg:             aws.Config{},
+					},
+				},
+				Sqlite: SqliteParams{
+					Workers:    &sqlWorkers,
+					CommitSize: &sqliteCommitSize,
+					CleanDb:    &falseVal,
+					Filename:   new(string),
+					SqlTable:   new(string),
+				},
+				Parquet: ParquetParams{
+					Workers:   &parquetWorkers,
+					ChunkSize: &parquetRowBuffer,
+				},
+				S3Delete: S3DeleteParams{
+					Workers:   &s3DeleteWorkers,
+					ChunkSize: &s3DeleteChunkSize,
+					Aws: AwsParams{
+						KeyId:           new(string),
+						SecretAccessKey: new(string),
+						SessionToken:    new(string),
+						Region:          new(string),
+						Cfg:             aws.Config{},
+					},
+				},
+				DynamoDb: DynamoDbParams{},
+			},
+			ListObject: ListObjectParams{Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}},
+			// Lambda:     LambdaParams{Deploy: &falseVal, Start: &falseVal, Aws: AwsParams{KeyId: &keyId, SecretAccessKey: &secretAccessKey, SessionToken: &sessionToken, Region: &region}},
 			Frontend: FrontendParams{
 				Frontend: &frontend,
 				Parquet: ParquetFrontendParams{
@@ -224,6 +282,31 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 					TableName: &sqlTables,
 				},
 				AwsLambdaLister: AwsLambdaListerParams{
+					BackChannelQ: SqsParams{Workers: new(int),
+						ChunkSize:      new(int),
+						Url:            new(string),
+						Delay:          new(int32),
+						MaxMessageSize: new(int),
+						Aws: AwsParams{KeyId: new(string),
+							SecretAccessKey: new(string),
+							SessionToken:    new(string),
+							Region:          new(string),
+						}},
+					CommandQ: SqsParams{
+						Workers:        new(int),
+						ChunkSize:      new(int),
+						Url:            new(string),
+						Delay:          new(int32),
+						MaxMessageSize: new(int),
+						Aws: AwsParams{KeyId: new(string),
+							SecretAccessKey: new(string),
+							SessionToken:    new(string),
+							Region:          new(string),
+						}}},
+				AwsLambdaCreateFiles: AwsLambdaCreateFileParams{
+					NumberOfFiles: &numberOfFiles,
+					JobConcurrent: &jobConcurrent,
+					JobSize:       &jobSize,
 					BackChannelQ: SqsParams{
 						Workers:        new(int),
 						ChunkSize:      new(int),
@@ -235,8 +318,7 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 							SecretAccessKey: new(string),
 							SessionToken:    new(string),
 							Region:          new(string),
-						},
-					},
+						}},
 					CommandQ: SqsParams{
 						Workers:        new(int),
 						ChunkSize:      new(int),
@@ -248,10 +330,8 @@ func DefaultS3StreamingLister() *S3StreamingLister {
 							SecretAccessKey: new(string),
 							SessionToken:    new(string),
 							Region:          new(string),
-						},
-					},
-				},
-			},
+						}},
+				}},
 		},
 		InputConcurrent: 0,
 		Clients: Channels{
@@ -282,7 +362,7 @@ func flagsAwsSqs(prefix string, flags *pflag.FlagSet, sqs *SqsParams) {
 	sqs.ChunkSize = flags.Int(fmt.Sprintf("%sSqsChunkSize", prefix), *sqs.ChunkSize, fmt.Sprintf("%s size of typical object chunks", prefix))
 }
 
-func ParseArgs(app *S3StreamingLister, osArgs []string) error {
+func ParseArgs(app *EimerKette, osArgs []string) error {
 	rootCmd := &cobra.Command{
 		Use:     path.Base(osArgs[0]),
 		Short:   "eimer-kette short help",
@@ -306,7 +386,8 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 
 	flagsAwsSqs("output", flags, &app.Config.Output.Sqs)
 
-	app.Config.Bucket = flags.StringP("bucket", "b", "", "aws bucket name")
+	app.Config.Bucket.Name = flags.StringP("bucket", "b", "", "aws bucket name")
+	flagsAws("Bucket", flags, &app.Config.Bucket.Aws)
 	app.Config.MaxKeys = flags.Int("maxKeys", *app.Config.MaxKeys, "aws maxKey pageElement size 1000")
 	app.Config.S3Workers = flags.Int("s3Worker", *app.Config.S3Workers, "number of query workers")
 	app.Config.Output.S3Delete.Workers = flags.Int("outputS3DeleteWorkers", *app.Config.Output.S3Delete.Workers, "number of output s3 delete workers")
@@ -319,19 +400,14 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.Config.Output.Parquet.ChunkSize = flags.Int("parquetChunkSize", *app.Config.Output.Parquet.ChunkSize, "writer workers")
 	app.Config.Output.Parquet.FileName = flags.String("parquetFilename", "", "parque output filename default stdout")
 
-	flagsAwsSqs("awsLambdaBackChannelQ", flags, &app.Config.Frontend.AwsLambdaLister.BackChannelQ)
-	flagsAws("awsLambdaBackChannelQ", flags, &app.Config.Frontend.AwsLambdaLister.BackChannelQ.Aws)
-	flagsAwsSqs("awsLambdaCommandQ", flags, &app.Config.Frontend.AwsLambdaLister.CommandQ)
-	flagsAws("awsLambdaCommandQ", flags, &app.Config.Frontend.AwsLambdaLister.CommandQ.Aws)
-
 	app.Config.Output.Sqlite.CleanDb = flags.Bool("sqliteCleanDb", *app.Config.Output.Sqlite.CleanDb, "set cleandb")
 	app.Config.Output.Sqlite.Workers = flags.Int("sqliteWorkers", *app.Config.Output.Sqlite.Workers, "writer workers")
 	app.Config.Output.Sqlite.Filename = flags.String("sqliteFilename", *app.Config.Output.Sqlite.Filename, "sqlite filename")
 	app.Config.Output.Sqlite.SqlTable = flags.String("sqliteTable", *app.Config.Output.Sqlite.SqlTable, "sqlite table name")
 	app.Config.Output.Sqlite.CommitSize = flags.Int("sqliteCommitSize", *app.Config.Output.Sqlite.CommitSize, "sqlite table name")
 
-	app.Config.Lambda.Start = flags.Bool("lambdaStart", *app.Config.Lambda.Start, "start lambda")
-	app.Config.Lambda.Deploy = flags.Bool("lambdaDeploy", *app.Config.Lambda.Deploy, "deploy the lambda")
+	// app.Config.Lambda.Start = flags.Bool("lambdaStart", *app.Config.Lambda.Start, "start lambda")
+	// app.Config.Lambda.Deploy = flags.Bool("lambdaDeploy", *app.Config.Lambda.Deploy, "deploy the lambda")
 
 	app.Config.Frontend.Frontend = flags.String("frontend", *app.Config.Frontend.Frontend, "aws-s3 | sqlite | parquet")
 
@@ -342,7 +418,22 @@ func ParseArgs(app *S3StreamingLister, osArgs []string) error {
 	app.Config.Frontend.Parquet.Workers = flags.Int("frontendParquetWorkers", *app.Config.Frontend.Parquet.Workers, "parquet worker")
 	app.Config.Frontend.Parquet.RowBuffer = flags.Int("frontendParquetRowBuffer", *app.Config.Frontend.Parquet.RowBuffer, "parquet row buffer")
 
-	flagsAws("lambda", flags, &app.Config.Lambda.Aws)
+	// flagsAws("lambda", flags, &app.Config.Lambda.Aws)
+
+	flagsAws("awsLambdaListerCommand", flags, &app.Config.Frontend.AwsLambdaLister.CommandQ.Aws)
+	flagsAwsSqs("awsLambdaListerCommand", flags, &app.Config.Frontend.AwsLambdaLister.CommandQ)
+	flagsAws("awsLambdaListerBackchannel", flags, &app.Config.Frontend.AwsLambdaLister.BackChannelQ.Aws)
+	flagsAwsSqs("awsLambdaListerBackchannel", flags, &app.Config.Frontend.AwsLambdaLister.BackChannelQ)
+
+	app.Config.Frontend.AwsLambdaCreateFiles.JobConcurrent = flags.Int("AwsLambdaCreateFilesJobConcurrent", *app.Config.Frontend.AwsLambdaCreateFiles.JobConcurrent, "AwsLambdaCreateFiles JobConcurrent")
+	app.Config.Frontend.AwsLambdaCreateFiles.JobSize = flags.Int("AwsLambdaCreateFilesJobSize", *app.Config.Frontend.AwsLambdaCreateFiles.JobSize, "AwsLambdaCreateFiles JobSize")
+	app.Config.Frontend.AwsLambdaCreateFiles.NumberOfFiles = flags.Int64("AwsLambdaCreateFilesNumberOfFiles", *app.Config.Frontend.AwsLambdaCreateFiles.NumberOfFiles, "AwsLambdaCreateFiles NumberOfFiles")
+
+	flagsAws("awsLambdaCreateFilesCommand", flags, &app.Config.Frontend.AwsLambdaCreateFiles.CommandQ.Aws)
+	flagsAwsSqs("awsLambdaCreateFilesCommand", flags, &app.Config.Frontend.AwsLambdaCreateFiles.CommandQ)
+	flagsAws("awsLambdaCreateFilesBackchannel", flags, &app.Config.Frontend.AwsLambdaCreateFiles.BackChannelQ.Aws)
+	flagsAwsSqs("awsLambdaCreateFilesBackchannel", flags, &app.Config.Frontend.AwsLambdaCreateFiles.BackChannelQ)
+
 	flagsAws("listObject", flags, &app.Config.ListObject.Aws)
 	flagsAws("outputSqs", flags, &app.Config.Output.Sqs.Aws)
 	flagsAws("outputS3Delete", flags, &app.Config.Output.S3Delete.Aws)
@@ -404,7 +495,7 @@ func (my *MyCredentials) Retrieve(ctx context.Context) (aws.Credentials, error) 
 	return my.cred, nil
 }
 
-func InitS3StreamingLister(app *S3StreamingLister) {
+func InitS3StreamingLister(app *EimerKette) {
 	err := ParseArgs(app, os.Args)
 	if err != nil {
 		panic("cobra error, " + err.Error())
@@ -414,14 +505,16 @@ func InitS3StreamingLister(app *S3StreamingLister) {
 		return
 	}
 	// fmt.Fprintf(os.Stderr, "XXX:%p:%s", app.Config.bucket, *app.Config.bucket)
-	if app.Config.Bucket == nil || len(*app.Config.Bucket) == 0 || app.Config.Help {
+	if app.Config.Bucket.Name == nil || len(*app.Config.Bucket.Name) == 0 || app.Config.Help {
 		os.Exit(1)
 		return
 	}
 	for _, awsParams := range []*AwsParams{
-		&app.Config.Lambda.Aws,
+		&app.Config.Frontend.AwsLambdaCreateFiles.BackChannelQ.Aws,
+		&app.Config.Frontend.AwsLambdaCreateFiles.CommandQ.Aws,
 		&app.Config.Frontend.AwsLambdaLister.BackChannelQ.Aws,
 		&app.Config.Frontend.AwsLambdaLister.CommandQ.Aws,
+		&app.Config.Bucket.Aws,
 		&app.Config.ListObject.Aws,
 		&app.Config.Output.Sqs.Aws,
 		&app.Config.Output.S3Delete.Aws} {

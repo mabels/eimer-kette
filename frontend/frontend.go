@@ -7,7 +7,7 @@ import (
 	myq "github.com/mabels/eimer-kette/my-queue"
 )
 
-func Frontend(app *config.S3StreamingLister, cho myq.MyQueue, chstatus myq.MyQueue) {
+func Frontend(app *config.EimerKette, cho myq.MyQueue, chstatus myq.MyQueue) {
 	if *app.Config.Frontend.Frontend == "parquet" {
 		Parquet(app, cho, chstatus)
 	} else if *app.Config.Frontend.Frontend == "sqlite" {
@@ -21,6 +21,8 @@ func Frontend(app *config.S3StreamingLister, cho myq.MyQueue, chstatus myq.MyQue
 			atomic.AddInt32(&app.InputConcurrent, int32(len(*app.Config.Prefixes)))
 			SingleLetterStrategy(app, app.Config.Prefix, chi)
 		}
+	} else if *app.Config.Frontend.Frontend == "aws-lambda-create-files" {
+		AwsLambdaCreateFiles(app, cho, chstatus)
 	} else if *app.Config.Frontend.Frontend == "aws-lambda-lister" {
 		AwsLambdaLister(app, cho, chstatus)
 	}

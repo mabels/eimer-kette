@@ -15,16 +15,16 @@ import (
 	"github.com/mabels/eimer-kette/status"
 )
 
-func Parquet(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueue) {
+func Parquet(app *config.EimerKette, cho myq.MyQueue, chStatus myq.MyQueue) {
 
 	fr, err := local.NewLocalFileReader(*app.Config.Frontend.Parquet.Filename)
 	if err != nil {
-		chStatus.Push(status.RunStatus{Fatal: &err})
+		chStatus.Push(status.RunStatus{Fatal: err})
 		return
 	}
 	pr, err := reader.NewParquetReader(fr, new(models.EimerKetteItem), int64(*app.Config.Frontend.Parquet.Workers))
 	if err != nil {
-		chStatus.Push(status.RunStatus{Fatal: &err})
+		chStatus.Push(status.RunStatus{Fatal: err})
 		return
 	}
 	go func() {
@@ -40,7 +40,7 @@ func Parquet(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueu
 				// }
 				stus := make([]models.EimerKetteItem, *app.Config.Frontend.Parquet.RowBuffer) //read 10 rows
 				if err = pr.Read(&stus); err != nil {
-					chStatus.Push(status.RunStatus{Err: &err})
+					chStatus.Push(status.RunStatus{Err: err})
 				} else {
 					app.Clients.Calls.Total.Inc("parquet-read")
 					// fmt.Fprintf(os.Stderr, "input:%v\n", stus[0])
@@ -63,7 +63,7 @@ func Parquet(app *config.S3StreamingLister, cho myq.MyQueue, chStatus myq.MyQueu
 		nextCnt := 0
 		for item := range obs.Observe() {
 			if item.E != nil {
-				chStatus.Push(status.RunStatus{Err: &item.E})
+				chStatus.Push(status.RunStatus{Err: item.E})
 			}
 			if item.V != nil {
 				items := item.V.([]interface{})

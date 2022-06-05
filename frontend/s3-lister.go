@@ -15,7 +15,7 @@ import (
 	"github.com/mabels/eimer-kette/status"
 )
 
-func getClient(app *config.S3StreamingLister) *s3.Client {
+func getClient(app *config.EimerKette) *s3.Client {
 	var client *s3.Client
 	app.Clients.Calls.Concurrent.Inc("NewFromConfig")
 	select {
@@ -33,7 +33,7 @@ func getClient(app *config.S3StreamingLister) *s3.Client {
 	return client
 }
 
-func S3Lister(app *config.S3StreamingLister, input s3.ListObjectsV2Input, chi myq.MyQueue, cho myq.MyQueue, chstatus myq.MyQueue) {
+func S3Lister(app *config.EimerKette, input s3.ListObjectsV2Input, chi myq.MyQueue, cho myq.MyQueue, chstatus myq.MyQueue) {
 	client := getClient(app)
 
 	app.Clients.Calls.Concurrent.Dec("ListObjectsV2Input")
@@ -49,7 +49,7 @@ func S3Lister(app *config.S3StreamingLister, input s3.ListObjectsV2Input, chi my
 
 	if err != nil {
 		app.Clients.Calls.Error.Inc("ListObjectsV2")
-		chstatus.Push(status.RunStatus{Err: &err})
+		chstatus.Push(status.RunStatus{Err: err})
 		// fmt.Fprintf(os.Stderr, "Got error retrieving list of objects:%s", *input.Bucket)
 		// fmt.Fprintln(os.Stderr, err)
 		return
@@ -80,7 +80,7 @@ func S3Lister(app *config.S3StreamingLister, input s3.ListObjectsV2Input, chi my
 		} else if *app.Config.Strategy == "letter" {
 			out, _ := json.Marshal(resp.CommonPrefixes)
 			err := fmt.Errorf("letter should not go to this:%s", string(out))
-			chstatus.Push(status.RunStatus{Err: &err, Completed: true})
+			chstatus.Push(status.RunStatus{Err: err, Completed: true})
 			return
 		}
 	}
@@ -95,7 +95,7 @@ func S3Lister(app *config.S3StreamingLister, input s3.ListObjectsV2Input, chi my
 	}
 }
 
-func DelimiterStrategy(app *config.S3StreamingLister, prefix *string, next *string, chi myq.MyQueue) {
+func DelimiterStrategy(app *config.EimerKette, prefix *string, next *string, chi myq.MyQueue) {
 	app.Clients.Calls.Concurrent.Inc("ListObjectsV2Input")
 	app.Clients.Calls.Total.Inc("ListObjectsV2Input")
 	chi.Push(&s3.ListObjectsV2Input{
@@ -103,11 +103,11 @@ func DelimiterStrategy(app *config.S3StreamingLister, prefix *string, next *stri
 		Delimiter:         app.Config.Delimiter,
 		Prefix:            prefix,
 		ContinuationToken: next,
-		Bucket:            app.Config.Bucket,
+		Bucket:            app.Config.Bucket.Name,
 	})
 }
 
-func SingleLetterStrategy(app *config.S3StreamingLister, prefix *string, chi myq.MyQueue) {
+func SingleLetterStrategy(app *config.EimerKette, prefix *string, chi myq.MyQueue) {
 	for _, letter := range *app.Config.Prefixes {
 		nextPrefix := *prefix + letter
 		app.Clients.Calls.Total.Inc("ListObjectsV2Input")
@@ -116,12 +116,12 @@ func SingleLetterStrategy(app *config.S3StreamingLister, prefix *string, chi myq
 			MaxKeys:   int32(*app.Config.MaxKeys),
 			Delimiter: app.Config.Delimiter,
 			Prefix:    &nextPrefix,
-			Bucket:    app.Config.Bucket,
+			Bucket:    app.Config.Bucket.Name,
 		})
 	}
 }
 
-func S3ListerWorker(app *config.S3StreamingLister, cho myq.MyQueue, chstatus myq.MyQueue) myq.MyQueue {
+func S3ListerWorker(app *config.EimerKette, cho myq.MyQueue, chstatus myq.MyQueue) myq.MyQueue {
 	chi := myq.MakeChannelQueue((*app.Config.MaxKeys) * *app.Config.S3Workers)
 	pooli := pond.New(*app.Config.S3Workers, len(*app.Config.Prefixes)**app.Config.MaxKeys*(*app.Config.S3Workers))
 	go func() {

@@ -49,7 +49,7 @@ type ParquetOutWriter struct {
 	chStatus           myq.MyQueue
 	waitStreamClosed   sync.Mutex
 	typesObjectChannel chan rxgo.Item
-	app                *config.S3StreamingLister
+	app                *config.EimerKette
 }
 
 func (ow *ParquetOutWriter) setup() OutWriter {
@@ -62,7 +62,7 @@ func (ow *ParquetOutWriter) setup() OutWriter {
 	ow.pw, err = writer.NewParquetWriterFromWriter(ow.output, new(models.EimerKetteItem), int64(*ow.app.Config.Output.Parquet.Workers))
 	// pw, err := writer.NewJSONWriter(md, fw, 4)
 	if err != nil {
-		ow.chStatus.Push(status.RunStatus{Err: &err})
+		ow.chStatus.Push(status.RunStatus{Err: err})
 	}
 	ow.pw.RowGroupSize = 1024 * 1024 //128M
 	ow.pw.CompressionType = parquet.CompressionCodec_SNAPPY
@@ -81,7 +81,7 @@ func (ow *ParquetOutWriter) setup() OutWriter {
 					err := ow.pw.Write(tek)
 					if err != nil {
 						ow.app.Clients.Calls.Error.Inc("parquet-write")
-						ow.chStatus.Push(status.RunStatus{Err: &err})
+						ow.chStatus.Push(status.RunStatus{Err: err})
 						return nil, err
 					}
 				}
@@ -110,21 +110,21 @@ func (ow *ParquetOutWriter) done() {
 	ow.waitStreamClosed.Lock()
 	// fmt.Fprintln(os.Stderr, "done:parquet")
 	if err := ow.pw.WriteStop(); err != nil {
-		ow.chStatus.Push(status.RunStatus{Err: &err})
+		ow.chStatus.Push(status.RunStatus{Err: err})
 	}
 	if ow.outputClose != nil {
 		ow.outputClose.Close()
 	}
 }
 
-func makeParquetOutWriter(app *config.S3StreamingLister, chStatus myq.MyQueue) OutWriter {
+func makeParquetOutWriter(app *config.EimerKette, chStatus myq.MyQueue) OutWriter {
 	fd := app.Output.FileStream
 	var outputClose *os.File
 	if *app.Config.Output.Parquet.FileName != "" {
 		var err error
 		outputClose, err = os.Create(*app.Config.Output.Parquet.FileName)
 		if err != nil {
-			chStatus.Push(status.RunStatus{Fatal: &err})
+			chStatus.Push(status.RunStatus{Fatal: err})
 		}
 		fd = outputClose
 	}

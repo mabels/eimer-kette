@@ -17,7 +17,7 @@ import (
 type S3DeleteOutWriter struct {
 	s3Clients          chan *s3.Client
 	chStatus           myq.MyQueue
-	app                *config.S3StreamingLister
+	app                *config.EimerKette
 	typesObjectChannel chan rxgo.Item
 	waitComplete       sync.Mutex
 	// observable         rxgo.Observable
@@ -33,7 +33,7 @@ func (sow *S3DeleteOutWriter) deleteObjects(items []interface{}) (*s3.DeleteObje
 		client = s3.NewFromConfig(sow.app.Config.Output.S3Delete.Aws.Cfg)
 	}
 	todelete := s3.DeleteObjectsInput{
-		Bucket: sow.app.Config.Bucket,
+		Bucket: sow.app.Config.Bucket.Name,
 	}
 	todelete.Delete = &types.Delete{
 		Objects: make([]types.ObjectIdentifier, len(items)),
@@ -51,7 +51,7 @@ func (sow *S3DeleteOutWriter) deleteObjects(items []interface{}) (*s3.DeleteObje
 	sow.app.Clients.Calls.Total.Duration("S3Deletes", started)
 	sow.app.Clients.Calls.Concurrent.Dec("S3Deletes")
 	if err != nil {
-		sow.chStatus.Push(status.RunStatus{Err: &err})
+		sow.chStatus.Push(status.RunStatus{Err: err})
 		return nil, nil // might be an problem
 	}
 	return out, err
@@ -85,7 +85,7 @@ func (sow *S3DeleteOutWriter) done() {
 	sow.waitComplete.Lock()
 }
 
-func makeS3DeleteOutWriter(app *config.S3StreamingLister, chStatus myq.MyQueue) OutWriter {
+func makeS3DeleteOutWriter(app *config.EimerKette, chStatus myq.MyQueue) OutWriter {
 	if *app.Config.Output.S3Delete.Workers < 1 {
 		panic("you need at least one worker for s3 delete")
 	}

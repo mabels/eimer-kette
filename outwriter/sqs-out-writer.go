@@ -21,7 +21,7 @@ import (
 type SqsOutWriter struct {
 	sqsClients         chan *sqs.Client
 	chStatus           myq.MyQueue
-	app                *config.S3StreamingLister
+	app                *config.EimerKette
 	typesObjectChannel chan rxgo.Item
 	waitComplete       sync.Mutex
 	writerCnt          int
@@ -44,7 +44,7 @@ func (sow *SqsOutWriter) BufferJsonSize(receive rxgo.Observable, opts ...rxgo.Op
 		Records: []events.S3EventRecord{},
 	})
 	if err != nil {
-		sow.chStatus.Push(status.RunStatus{Err: &err})
+		sow.chStatus.Push(status.RunStatus{Err: err})
 	}
 	go func() {
 		records := events.S3Event{
@@ -73,7 +73,7 @@ func (sow *SqsOutWriter) BufferJsonSize(receive rxgo.Observable, opts ...rxgo.Op
 					ResponseElements: map[string]string{}, //   `json:"responseElements"`
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
-							Name: *sow.app.Config.Bucket,
+							Name: *sow.app.Config.Bucket.Name,
 						},
 						Object: events.S3Object{
 							Key:  *object.Key,
@@ -83,7 +83,7 @@ func (sow *SqsOutWriter) BufferJsonSize(receive rxgo.Observable, opts ...rxgo.Op
 				}
 				eventBytes, err := json.Marshal(event)
 				if err != nil {
-					sow.chStatus.Push(status.RunStatus{Err: &err})
+					sow.chStatus.Push(status.RunStatus{Err: err})
 				}
 				eventSize := len(eventBytes)
 				if currentSize != len(frameBytes) {
@@ -106,7 +106,7 @@ func (sow *SqsOutWriter) BufferJsonSize(receive rxgo.Observable, opts ...rxgo.Op
 				mutex.Unlock()
 			}
 			if item.E != nil {
-				sow.chStatus.Push(status.RunStatus{Err: &item.E})
+				sow.chStatus.Push(status.RunStatus{Err: item.E})
 				close(ch)
 			}
 		}
@@ -136,7 +136,7 @@ func (sow *SqsOutWriter) sqsSendMessageBatch(s3events *[]events.S3Event) (*sqs.S
 		records += len(s3event.Records)
 		jsonBytes, err := json.Marshal(s3event)
 		if err != nil {
-			sow.chStatus.Push(status.RunStatus{Err: &err})
+			sow.chStatus.Push(status.RunStatus{Err: err})
 		}
 		jsonStr := string(jsonBytes)
 		sow.sendId++
@@ -157,7 +157,7 @@ func (sow *SqsOutWriter) sqsSendMessageBatch(s3events *[]events.S3Event) (*sqs.S
 	sow.sqsClients <- client
 	if err != nil {
 		sow.app.Clients.Calls.Error.Inc("SqsSendMessage")
-		sow.chStatus.Push(status.RunStatus{Err: &err})
+		sow.chStatus.Push(status.RunStatus{Err: err})
 	}
 	return out, err
 }
@@ -172,7 +172,7 @@ func (sow *SqsOutWriter) setup() OutWriter {
 			}
 			out, err := sow.sqsSendMessageBatch(&s3Events)
 			if err != nil {
-				sow.chStatus.Push(status.RunStatus{Err: &err})
+				sow.chStatus.Push(status.RunStatus{Err: err})
 			}
 			return out, err
 		},
@@ -206,10 +206,10 @@ func (sow *SqsOutWriter) done() {
 	// fmt.Fprintln(os.Stderr, "SqsWriterDone:leave")
 }
 
-func makeSqsOutWriter(app *config.S3StreamingLister, chStatus myq.MyQueue) OutWriter {
+func makeSqsOutWriter(app *config.EimerKette, chStatus myq.MyQueue) OutWriter {
 	if *app.Config.Output.Sqs.Workers < 1 {
 		err := fmt.Errorf("you need at least one worker for s3 delete")
-		chStatus.Push(status.RunStatus{Err: &err})
+		chStatus.Push(status.RunStatus{Err: err})
 	}
 	sow := SqsOutWriter{
 		chStatus:   chStatus,
