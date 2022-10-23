@@ -41,11 +41,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.11.1 // indirect
 	github.com/aws/smithy-go v1.9.0 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
+	github.com/btcsuite/btcutil v1.0.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.0.0 // indirect
 	github.com/cheggaaa/pb v1.0.18 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/djherbis/times v1.2.0 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
+	github.com/fatih/structs v1.1.0
 	github.com/gofrs/uuid v3.3.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
@@ -59,9 +61,12 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/kevinburke/ssh_config v0.0.0-20190725054713-01f96b0aa0cd // indirect
 	github.com/klauspost/compress v1.13.1 // indirect
+	github.com/mabels/c5-envelope v1.0.21 // indirect
+	github.com/mabels/object-graph-streamer v0.0.2-0.20211213204301-a74d76202d15 // indirect
 	github.com/mattn/go-runewidth v0.0.8 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/opentracing/basictracer-go v1.0.0 // indirect
 	github.com/opentracing/opentracing-go v1.1.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.8 // indirect

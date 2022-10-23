@@ -5,7 +5,7 @@ all: test dist/cli dist/amd64-lambda.zip
 dist/cli: dist 
 	go build -o dist/cli main.go
 
-pulumi: dist/amd64-lambda.zip
+pulumi: dist/amd64-lambda.zip dist/cli
 	PULUMI_CONFIG_PASSPHRASE="" pulumi up  -f
 
 release:

@@ -22,7 +22,9 @@ type RunStatus struct {
 type RunResult struct {
 	Action  string
 	Took    time.Duration
-	Objects int64
+	Related interface{}
+	Info    *string
+	Warning *string
 	Err     error
 	Fatal   error
 }

@@ -3,40 +3,41 @@ package lambda
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/fatih/structs"
 	"github.com/google/uuid"
 	"github.com/mabels/eimer-kette/models"
 	"github.com/mabels/eimer-kette/status"
 	"github.com/reactivex/rxgo/v2"
 )
 
-func cleanCreateFilesPayload(cmd *models.CmdCreateFiles) string {
-	out := *cmd
-	out.Payload.Bucket.Credentials = cleanAwsCredentials(cmd.Payload.Bucket.Credentials)
-	return toJsonString(out)
+func cleanCreateFilesPayload(cmd *models.CreateFilesPayload) *map[string]interface{} {
+	out := structs.Map(*cmd)
+
+	return cleanAwsCredentials(&out)
+	// return toJsonString(out)
 }
 
-func (hctx *HandlerCtx) writeSingleFiles(cmd *models.CmdCreateFiles, started time.Time, bc *BackChannel) {
-	// log.Printf("-1-writeSingleFiles:%v", cleanCreateTestPayload(cmd))
-	if cmd.Payload.SkipCreate {
+func (hctx *HandlerCtx) writeSingleFiles(cmd *models.CreateFilesPayload, started time.Time, bc *BackChannel) {
+	if cmd.SkipCreate {
 		return
 	}
 	// log.Printf("-2-writeSingleFiles:%v", cleanCreateTestPayload(cmd))
 
 	// todos := map[string]s3.PutObjectInput{}
-	todos := make([]s3.PutObjectInput, cmd.Payload.NumberOfFiles)
+	todos := make([]s3.PutObjectInput, cmd.NumberOfFiles)
 	// idProvider := uuid.New()
 	// log.Printf("2-Single: %v", cleanCreateTestPayload(cmd))
 	// log.Printf("-3-writeSingleFiles:%v", cleanCreateTestPayload(cmd))
-	for i := 0; i < int(cmd.Payload.NumberOfFiles); i++ {
+	for i := 0; i < int(cmd.NumberOfFiles); i++ {
 		id := strings.ReplaceAll(uuid.New().String(), "-", "/")
 		todos[i] = s3.PutObjectInput{
 			Key:    &id,
-			Bucket: &cmd.Payload.Bucket.Name,
+			Bucket: &cmd.Bucket.Name,
 			Body:   strings.NewReader(id),
 		}
 	}
@@ -51,7 +52,7 @@ func (hctx *HandlerCtx) writeSingleFiles(cmd *models.CmdCreateFiles, started tim
 			// log.Printf("4-Single: %v:%d", cleanCreateTestPayload(cmd), len(items.([]interface{})))
 			// log.Printf("3-Single: %v", item)
 			// for _, item := range items.([]interface{}) {
-			if time.Since(started) >= cmd.Payload.ScheduleTime {
+			if time.Since(started) >= cmd.ScheduleTime {
 				// log.Printf("4-Single: %v", item)
 				// log.Printf("-6-writeSingleFiles:%v", cleanCreateTestPayload(cmd))
 				return Result{
@@ -62,20 +63,21 @@ func (hctx *HandlerCtx) writeSingleFiles(cmd *models.CmdCreateFiles, started tim
 			// log.Printf("Write: %v", item.(s3.PutObjectInput).Key)
 			out, err := hctx.S3putObject(cmd, item.(s3.PutObjectInput))
 			took := time.Since(now)
-			// if err != nil {
-			// 	bc.SendStatus(status.RunResult{
-			// 		Action: "Error",
-			// 		Took:   took,
-			// 		Err:    err,
-			// 	})
-			// 	return nil, err
-			// }
-			if took.Milliseconds() > 100 {
-				bc.SendStatus(status.RunResult{
-					Action:  "Warning",
+
+			if err != nil {
+				bc.SendResult(status.RunResult{
+					Action:  "Error:S3putObject",
 					Took:    took,
-					Objects: 0,
-					Err:     fmt.Errorf("S3putObject: %f:%s", time.Since(started).Seconds(), *item.(s3.PutObjectInput).Key),
+					Related: item.(s3.PutObjectInput),
+					Err:     err,
+					Fatal:   nil,
+				})
+			} else if took.Seconds() > 0.1 {
+				bc.SendResult(status.RunResult{
+					Action:  "Warning:S3putObject",
+					Took:    took,
+					Related: item.(s3.PutObjectInput),
+					Warning: aws.String(fmt.Sprintf("%f:%s", time.Since(started).Seconds(), *item.(s3.PutObjectInput).Key)),
 					Fatal:   nil,
 				})
 			}
@@ -88,15 +90,15 @@ func (hctx *HandlerCtx) writeSingleFiles(cmd *models.CmdCreateFiles, started tim
 			// log.Printf("5.1-Single: %v:%d", cleanCreateTestPayload(cmd), time.Since(now))
 			return result, nil
 		},
-		rxgo.WithPool(cmd.Payload.JobConcurrent),
+		rxgo.WithPool(cmd.JobConcurrent),
 	).Reduce(func(_ context.Context, acc interface{}, item interface{}) (interface{}, error) {
 		if acc == nil {
 			acc = *cmd
 		}
-		ocmd := acc.(models.CmdCreateFiles)
+		ocmd := acc.(models.CreateFilesPayload)
 		result := item.(Result)
 		if result.Error != nil || result.Result != nil {
-			ocmd.Payload.NumberOfFiles--
+			ocmd.NumberOfFiles--
 			// log.Printf("6.1-Single: %v:%v", ocmd, item)
 			// delete(todos, *result.Request.Key)
 		}
@@ -110,61 +112,77 @@ func (hctx *HandlerCtx) writeSingleFiles(cmd *models.CmdCreateFiles, started tim
 	// log.Printf("8-Single: %v:%v", ritem, err)
 	if err != nil {
 		// log.Printf("PutObjects:Error %v", err)
-		bc.SendStatus(status.RunResult{Action: "Error", Err: fmt.Errorf("writeSingleFiles:rxgo: %v", err)})
+		bc.SendResult(status.RunResult{
+			Action: "Error:RxGo",
+			Err:    err,
+		})
 		return
 	}
 	// log.Printf("-10-writeSingleFiles:%v", cleanCreateTestPayload(cmd))
-	rcmd := ritem.V.(models.CmdCreateFiles)
-	hctx.pushJobSizeCommands(&rcmd, rcmd.Payload.NumberOfFiles, started, bc)
+	rcmd := ritem.V.(models.CreateFilesPayload)
+	hctx.pushJobSizeCommands(&rcmd, rcmd.NumberOfFiles, started, bc)
 	took := time.Since(started)
 	// bc.SendStatus(status.RunResult{
-	log.Printf("writeSingleFiles:took %f - %d of %d:%v", took.Seconds(),
-		cmd.Payload.NumberOfFiles-rcmd.Payload.NumberOfFiles,
-		cmd.Payload.NumberOfFiles,
-		cleanCreateFilesPayload(&rcmd))
+	infoStr := fmt.Sprintf("took %f - %d of %d", took.Seconds(),
+		cmd.NumberOfFiles-rcmd.NumberOfFiles,
+		cmd.NumberOfFiles)
+	bc.SendResult(status.RunResult{
+		Action:  "Info:writeSingleFiles",
+		Info:    &infoStr,
+		Related: cleanCreateFilesPayload(&rcmd),
+	})
 }
 
-func (hctx *HandlerCtx) pushJobSizeCommands(cmd *models.CmdCreateFiles, jobSize int64, started time.Time, bc *BackChannel) {
+func (hctx *HandlerCtx) pushJobSizeCommands(cmd *models.CreateFilesPayload, jobSize int64, started time.Time, bc *BackChannel) {
 	pushStarted := time.Now()
-	for done := int64(0); done < cmd.Payload.NumberOfFiles; done += jobSize {
-		if time.Since(started) > cmd.Payload.ScheduleTime {
-			cmd.Payload.NumberOfFiles = cmd.Payload.NumberOfFiles - done
+	for done := int64(0); done < cmd.NumberOfFiles; done += jobSize {
+		if time.Since(started) > cmd.ScheduleTime {
+			cmd.NumberOfFiles = cmd.NumberOfFiles - done
 			// log.Printf("pushJobSizeCommands:reschedule: %v", cleanCreateTestPayload(cmd))
-			_, err := hctx.SqsClient.SendMessageJson(cmd)
+			_, err := hctx.SqsClient.SendCmdCreateFiles(cmd)
 			if err != nil {
-				log.Printf("SQS-SendMessage: %v:%v", hctx.QueueUrl, err)
+				bc.SendResult(status.RunResult{
+					Action:  "Error:SendCmdCreateFiles:pushJobSizeCommands",
+					Took:    time.Since(pushStarted),
+					Related: cleanCreateFilesPayload(cmd),
+					Err:     err,
+				})
 			}
-			bc.SendMessageJson(status.RunResult{
-				Action:  "pushJobSizeCommands",
+			bc.SendResult(status.RunResult{
+				Action:  "Info:Reschedule:pushJobSizeCommands",
 				Took:    time.Since(pushStarted),
-				Objects: done,
+				Related: cleanCreateFilesPayload(cmd),
 			})
-			log.Printf("pushJobSizeCommands:took %f", time.Since(started).Seconds())
+			// log.Printf("pushJobSizeCommands:took %f", time.Since(started).Seconds())
 			return
 		}
 		my := *cmd
-		if done+jobSize > cmd.Payload.NumberOfFiles {
-			my.Payload.NumberOfFiles = cmd.Payload.NumberOfFiles - done
+		if done+jobSize > cmd.NumberOfFiles {
+			my.NumberOfFiles = cmd.NumberOfFiles - done
 		} else {
-			my.Payload.NumberOfFiles = jobSize
+			my.NumberOfFiles = jobSize
 		}
-		// log.Printf("pushSingleCommands:%d of %d:%v", done, cmd.Payload.NumberOfFiles, cleanCreateTestPayload(&my))
-		_, err := hctx.SqsClient.SendMessageJson(my)
+		_, err := hctx.SqsClient.SendCmdCreateFiles(&my)
 		if err != nil {
-			log.Printf("SQS-SendMessage: %v:%v", hctx.QueueUrl, err)
+			bc.SendResult(status.RunResult{
+				Action:  "Error:SendCmdCreateFiles:pushJobSizeCommands",
+				Took:    time.Since(pushStarted),
+				Related: cleanCreateFilesPayload(&my),
+				Err:     err,
+			})
 		}
 	}
 }
 
-func (hctx *HandlerCtx) createTestHandler(cmd *models.CmdCreateFiles, started time.Time, bc *BackChannel) {
-	parts := cmd.Payload.NumberOfFiles / int64(cmd.Payload.JobSize)
+func (hctx *HandlerCtx) createTestHandler(cmd *models.CreateFilesPayload, started time.Time, bc *BackChannel) {
+	parts := cmd.NumberOfFiles / int64(cmd.JobSize)
 	if parts <= 1 {
 		// log.Printf("Single: %v", cleanCreateTestPayload(cmd))
 		hctx.writeSingleFiles(cmd, started, bc)
-	} else if parts <= int64(cmd.Payload.JobSize) {
+	} else if parts <= int64(cmd.JobSize) {
 		// log.Printf("Push-1: %v", cleanCreateTestPayload(cmd))
-		hctx.pushJobSizeCommands(cmd, int64(cmd.Payload.JobSize), started, bc)
-	} else if parts > int64(cmd.Payload.JobSize) {
+		hctx.pushJobSizeCommands(cmd, int64(cmd.JobSize), started, bc)
+	} else if parts > int64(cmd.JobSize) {
 		// log.Printf("Push-2: %v", cleanCreateTestPayload(cmd))
 		hctx.pushJobSizeCommands(cmd, int64(parts), started, bc)
 	}

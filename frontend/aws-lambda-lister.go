@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 
 	config "github.com/mabels/eimer-kette/config"
+	"github.com/mabels/eimer-kette/lambda"
 	myq "github.com/mabels/eimer-kette/my-queue"
 	"github.com/mabels/eimer-kette/status"
 )
@@ -18,7 +19,7 @@ type ListerCommand struct {
 
 func AwsLambdaLister(app *config.EimerKette, cho myq.MyQueue, chstatus myq.MyQueue) {
 	// Setup BackChannel
-	startBackChannel(app, &app.Config.Frontend.AwsLambdaLister.BackChannelQ, cho, chstatus)
+	lambda.StartBackChannel(app, &app.Config.Frontend.AwsLambdaLister.BackChannelQ, cho, chstatus)
 	// Issue Command
 	// app.Config.Frontend.AwsLambdaLister.CommandQ =
 	sqsClient := sqs.NewFromConfig(app.Config.Frontend.AwsLambdaLister.CommandQ.Aws.Cfg)

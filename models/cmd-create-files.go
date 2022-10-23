@@ -11,8 +11,3 @@ type CreateFilesPayload struct {
 	ScheduleTime  time.Duration `json:"ScheduleTime"` // default 2000msec
 	BackChannel   SqsParams     `json:"BackChannel"`
 }
-
-type CmdCreateFiles struct {
-	Command string `json:"Command"`
-	Payload CreateFilesPayload
-}

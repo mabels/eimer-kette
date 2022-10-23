@@ -24,13 +24,13 @@ func (my *MyCredentials) Retrieve(ctx context.Context) (aws.Credentials, error) 
 // 	// lambdaRuntime time.Duration // msec
 // }
 
-func (hctx *HandlerCtx) getClient(cmd *models.CmdCreateFiles) (*s3.Client, chan *s3.Client) {
+func (hctx *HandlerCtx) getClient(cmd *models.CreateFilesPayload) (*s3.Client, chan *s3.Client) {
 	hctx.S3ClientsSync.Lock()
 	defer hctx.S3ClientsSync.Unlock()
 	if hctx.S3Clients == nil {
 		hctx.S3Clients = &map[string]*s3.Client{}
 	}
-	client, ok := (*hctx.S3Clients)[cmd.Payload.Bucket.Name]
+	client, ok := (*hctx.S3Clients)[cmd.Bucket.Name]
 	if !ok {
 		// 	channel = make(chan *s3.Client, cmd.Payload.JobConcurrent)
 		// }
@@ -43,21 +43,21 @@ func (hctx *HandlerCtx) getClient(cmd *models.CmdCreateFiles) (*s3.Client, chan 
 		// 	{
 		awsCredProvider := MyCredentials{
 			cred: aws.Credentials{
-				AccessKeyID:     *cmd.Payload.Bucket.Credentials.KeyId,
-				SecretAccessKey: *cmd.Payload.Bucket.Credentials.AccessKey,
+				AccessKeyID:     *cmd.Bucket.Credentials.KeyId,
+				SecretAccessKey: *cmd.Bucket.Credentials.AccessKey,
 			},
 		}
 		cfg := aws.Config{
 			Credentials: &awsCredProvider,
-			Region:      *cmd.Payload.Bucket.Credentials.Region,
+			Region:      *cmd.Bucket.Credentials.Region,
 		}
 		client = s3.NewFromConfig(cfg)
-		(*hctx.S3Clients)[cmd.Payload.Bucket.Name] = client
+		(*hctx.S3Clients)[cmd.Bucket.Name] = client
 	}
 	return client, nil
 }
 
-func (hctx *HandlerCtx) S3putObject(cmd *models.CmdCreateFiles, item s3.PutObjectInput) (*s3.PutObjectOutput, error) {
+func (hctx *HandlerCtx) S3putObject(cmd *models.CreateFilesPayload, item s3.PutObjectInput) (*s3.PutObjectOutput, error) {
 	client, _ := hctx.getClient(cmd)
 	obs, err := client.PutObject(context.TODO(), &item)
 	if err != nil {
