@@ -43,163 +43,37 @@ changelog:
 
 
 dockers:
-  # You can have multiple Docker images.
-  -
-    # ID of the image, needed if you want to filter by it later on (e.g. on custom publishers).
-    id: eimer-kette
-
-    # GOOS of the built binaries/packages that should be used.
-    goos: linux
-
-    goarch: amd64
-#      - arm
-#      - 386
-#      - arm64
-#    goarm:
-#      - 6
-#      - 7
-
-    # IDs to filter the binaries/packages.
-    ids:
-    - eimer-kette
-
-    # Templates of the Docker image names.
-    image_templates:
-    - "mabels/eimer-kette:latest"
-    - "mabels/eimer-kette:{{ .Tag }}"
-    - "mabels/eimer-kette:{{ .Tag }}-{{ .Env.GOVERSION }}"
-    - "mabels/eimer-kette:v{{ .Major }}"
-
-    # Skips the docker push.
-    # Could be useful if you also do draft releases.
-    #
-    # If set to auto, the release will not be pushed to the Docker repository
-    #  in case there is an indicator of a prerelease in the tag, e.g. v1.0.0-rc1.
-    #
-    # Defaults to false.
-    skip_push: false
-
-    # Path to the Dockerfile (from the project root).
-    #
-    # Defaults to `Dockerfile`.
-    dockerfile: '{{ .Env.DOCKERFILE }}'
-
-    # Set the "backend" for the Docker pipe.
-    # Valid options are: docker, buildx, podman.
-    # podman is a GoReleaser Pro feature and is only available on Linux.
-    # Defaults to docker.
-    use: buildx
-
-    # Template of the docker build flags.
-    #build_flag_templates:
-    #- "--pull"
-    #- "--label=org.opencontainers.image.created={{.Date}}"
-    #- "--label=org.opencontainers.image.title={{.ProjectName}}"
-    #- "--label=org.opencontainers.image.revision={{.FullCommit}}"
-    #- "--label=org.opencontainers.image.version={{.Version}}"
-    #- "--build-arg=FOO={{.Env.Bar}}"
-    #- "--platform=linux/arm64"
-
-    # Extra flags to be passed down to the push command.
-    # Defaults to empty.
-    #push_flags:
-    #- --tls-verify=false
-
-    # If your Dockerfile copies files other than binaries and packages,
-    # you should list them here as well.
-    # Note that GoReleaser will create the same structure inside a temporary
-    # folder, so if you add `foo/bar.json` here, on your Dockerfile you can
-    # `COPY foo/bar.json /whatever.json`.
-    # Also note that the paths here are relative to the folder in which
-    # GoReleaser is being run (usually the repository root folder).
-    # This field does not support wildcards, you can add an entire folder here
-    # and use wildcards when you `COPY`/`ADD` in your Dockerfile.
-    #extra_files:
-    #- config.yml
-
-  - use: buildx
-    goos: linux
-    goarch: amd64
-    image_templates:
-      - "mabels/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "mabels/{{ .ProjectName }}:latest-amd64"
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-  - use: buildx
-    goos: linux
-    goarch: arm64
-    image_templates:
-      - "mabels/{{ .ProjectName }}:{{ .Version }}-arm64v8"
-      - "mabels/{{ .ProjectName }}:latest-arm64v8"
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-  - use: buildx
-    goos: linux
-    goarch: arm
-    goarm: 7
-    image_templates:
-      - "mabels/{{ .ProjectName }}:{{ .Version }}-armv7"
-      - "mabels/{{ .ProjectName }}:latest-armv7"
-    build_flag_templates:
-      - "--platform=linux/arm"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-
-# .goreleaser.yaml
+- image_templates: ["ghcr.io/mabels/{{ .ProjectName }}:{{ .Version }}-amd64"]
+  dockerfile: Dockerfile
+  use: buildx
+  build_flag_templates:
+  - --platform=linux/amd64
+  - --label=org.opencontainers.image.title={{ .ProjectName }}
+  - --label=org.opencontainers.image.description={{ .ProjectName }}
+  - --label=org.opencontainers.image.url=https://github.com/mabels/{{ .ProjectName }}
+  - --label=org.opencontainers.image.source=https://github.com/mabels/{{ .ProjectName }}
+  - --label=org.opencontainers.image.version={{ .Version }}
+  - --label=org.opencontainers.image.revision={{ .FullCommit }}
+  - --label=org.opencontainers.image.licenses=AFL2
+- image_templates: ["ghcr.io/mabels/{{ .ProjectName }}:{{ .Version }}-arm64v8"]
+  goarch: arm64
+  dockerfile: Dockerfile
+  use: buildx
+  build_flag_templates:
+  - --platform=linux/arm64/v8
+  - --label=org.opencontainers.image.title={{ .ProjectName }}
+  - --label=org.opencontainers.image.description={{ .ProjectName }}
+  - --label=org.opencontainers.image.url=https://github.com/mabels/{{ .ProjectName }}
+  - --label=org.opencontainers.image.source=https://github.com/mabels/{{ .ProjectName }}
+  - --label=org.opencontainers.image.version={{ .Version }}
+  - --label=org.opencontainers.image.revision={{ .FullCommit }}
+  - --label=org.opencontainers.image.licenses=AFL2
 docker_manifests:
-  # You can have multiple Docker manifests.
--
-  # ID of the manifest, needed if you want to filter by it later on (e.g. on custom publishers).
-  id: 
-
-  # Name template for the manifest.
-  # Defaults to empty.
-  name_template: mabels/eimer-kette:{{ .Version }}
-
-  # Image name templates to be added to this manifest.
-  # Defaults to empty.
+- name_template: ghcr.io/mabels/{{ .ProjectName }}:{{ .Version }}
   image_templates:
-  - mabels/eimer-kette:{{ .Version }}-amd64
-  - mabels/eimer-kette:{{ .Version }}-arm64v8
-  - mabels/eimer-kette:{{ .Version }}-armv7
-
-  # Extra flags to be passed down to the manifest create command.
-  # Defaults to empty.
-  #create_flags:
-  #- --insecure
-
-  # Extra flags to be passed down to the manifest push command.
-  # Defaults to empty.
-  #push_flags:
-  #- --insecure
-
-  # Skips the Docker manifest.
-  # If you set this to 'false' or 'auto' on your source Docker configs,
-  #  you'll probably want to do the same here.
-  #
-  # If set to 'auto', the manifest will not be created in case there is an
-  #  indicator of a prerelease in the tag, e.g. v1.0.0-rc1.
-  #
-  # Defaults to false.
-  skip_push: false
-
-  # Set the "backend" for the Docker manifest pipe.
-  # Valid options are: docker, podman
-  #
-  # Relevant notes:
-  # 1. podman is a GoReleaser Pro feature and is only available on Linux;
-  # 2. if you set podman here, the respective docker configs need to use podman too.
-  #
-  # Defaults to docker.
-  use: docker
-
+  - ghcr.io/mabels/{{ .ProjectName }}:{{ .Version }}-amd64
+  - ghcr.io/mabels/{{ .ProjectName }}:{{ .Version }}-arm64v8
+- name_template: ghcr.io/mabels/{{ .ProjectName }}:latest
+  image_templates:
+  - ghcr.io/mabels/{{ .ProjectName }}:{{ .Version }}-amd64
+  - ghcr.io/mabels/{{ .ProjectName }}:{{ .Version }}-arm64v8
