@@ -16,12 +16,17 @@ jobs:
       with:
         go-version: ">=1.19.0"
 
+    - name: Go Setup
+      run: |
+        go get ./...
+        go mod tidy
+
     - name: Test
       run: go test -v ./...
 
     - name: Build
       run: |
-        CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version='{{.Version}}' -X main.GitCommit={{.Commit}}" -v ./...
+        CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version='{{.Version}}' -X main.GitCommit={{.Commit}}" -o ./ -v ./...
         ./eimer-kette --version
 
     - name: Docker Login
