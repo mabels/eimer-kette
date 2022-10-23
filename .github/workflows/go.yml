@@ -1,4 +1,4 @@
-name: Go
+name: Build Eimer-Kette
 
 on:
   pull_request:
@@ -16,11 +16,13 @@ jobs:
       with:
         go-version: ">=1.19.0"
 
-    - name: Build
-      run: go build -v ./...
-
     - name: Test
       run: go test -v ./...
+
+    - name: Build
+      run: |
+        CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version='{{.Version}}' -X main.GitCommit={{.Commit}}" -v ./...
+        ./eimer-kette --version
 
     - name: Docker Login
       uses: docker/login-action@v1

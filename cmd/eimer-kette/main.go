@@ -9,12 +9,12 @@ import (
 	"github.com/mabels/eimer-kette/status"
 )
 
-var version = "develop"
-var commit = "unknown"
+var Version = "develop"
+var GitCommit = "unknown"
 
 func main() {
-	config.Version = version
-	config.GitCommit = commit
+	config.Version = Version
+	config.GitCommit = GitCommit
 	app := config.DefaultS3StreamingLister()
 	config.InitS3StreamingLister(app)
 	if *app.Config.Lambda.Start {
