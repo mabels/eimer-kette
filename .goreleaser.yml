@@ -67,7 +67,7 @@ dockers:
     image_templates:
     - "mabels/eimer-kette:latest"
     - "mabels/eimer-kette:{{ .Tag }}"
-    - "mabels/eimer-kette:{{ .Tag }}-{{ .Env.GO_VERSION }}"
+    - "mabels/eimer-kette:{{ .Tag }}-{{ .Env.GOVERSION }}"
     - "mabels/eimer-kette:v{{ .Major }}"
     - "gcr.io/mabels/eimer-kette:latest"
 
