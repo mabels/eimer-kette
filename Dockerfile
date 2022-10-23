@@ -1,3 +1,3 @@
 FROM scratch
-ENTRYPOINT ["/mybin"]
-COPY mybin /
+ENTRYPOINT ["/eimer-kette"]
+COPY eimer-kette /
