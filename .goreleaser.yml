@@ -69,7 +69,6 @@ dockers:
     - "mabels/eimer-kette:{{ .Tag }}"
     - "mabels/eimer-kette:{{ .Tag }}-{{ .Env.GOVERSION }}"
     - "mabels/eimer-kette:v{{ .Major }}"
-    - "gcr.io/mabels/eimer-kette:latest"
 
     # Skips the docker push.
     # Could be useful if you also do draft releases.
